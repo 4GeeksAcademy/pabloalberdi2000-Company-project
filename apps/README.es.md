@@ -6,3 +6,7 @@ Cada subcarpeta dentro de `apps/` debe corresponder a **una aplicación concreta
 
 - **Propósito principal**: centralizar en un único monorepo todas las aplicaciones que dan soporte a los casos de uso de la compañía.
 - **Recomendación**: documenta en este archivo (o en sub-READMEs) las aplicaciones que vayas añadiendo, su objetivo, tecnología usada y cómo ejecutarlas en desarrollo, pruebas y producción.
+
+## Aplicaciones actuales
+
+- `brasaland-web`: landing (`apps/index.html`) y un único formulario de aplicación (`apps/application.html`) con validación en JavaScript vanilla (`apps/validation.js`), accesibilidad orientada a WCAG y datos estructurados SEO básicos.
