@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background:
+    radial-gradient(circle at 10% -10%, rgba(82, 215, 255, 0.2), transparent 35%),
+    radial-gradient(circle at 90% 10%, rgba(44, 212, 182, 0.18), transparent 30%),
+    linear-gradient(180deg, #091124 0%, #0f172a 65%, #090f1d 100%);
+}
+
+.glass-panel {
+  background: linear-gradient(160deg, rgba(17, 28, 51, 0.86), rgba(10, 17, 33, 0.9));
+  border: 1px solid rgba(120, 149, 196, 0.24);
+  backdrop-filter: blur(14px);
+}
+
+.inner-glow-primary {
+  box-shadow:
+    inset 0 0 0 1px rgba(82, 215, 255, 0.24),
+    inset 0 16px 32px -20px rgba(82, 215, 255, 0.45),
+    0 24px 48px -28px rgba(5, 12, 24, 0.85);
+}
+
+.status-pulse {
+  position: relative;
+}
+
+.status-pulse::before {
+  content: "";
+  position: absolute;
+  inset: -0.25rem;
+  border-radius: 9999px;
+  background: rgba(44, 212, 182, 0.28);
+  animation: pulseSoft 1.8s ease-in-out infinite;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2a3a59 #0b1326;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #0b1326;
+}
+
+*::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  border: 2px solid #0b1326;
+  background: linear-gradient(180deg, #2a3a59 0%, #173249 100%);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #35507a 0%, #245c82 100%);
+}
