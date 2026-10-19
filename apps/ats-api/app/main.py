@@ -2,15 +2,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .database import engine, Base
-from .routers import candidates
+from .routers import candidates, incidents
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
 
 # Create FastAPI app
 app = FastAPI(
-    title="Brasaland ATS API",
-    description="Applicant Tracking System for Brasaland People & Culture Team",
+    title="Brasaland API",
+    description="Applicant Tracking System + Incidents Analysis for Brasaland",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -27,6 +27,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(candidates.router)
+app.include_router(incidents.router)
 
 
 @app.get("/")

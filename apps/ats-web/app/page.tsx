@@ -52,12 +52,22 @@ export default function CandidatesPage() {
   return (
     <div className="container mx-auto px-4 py-8 max-w-7xl">
       <header className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight text-amber-950">
-          Sistema de Candidaturas
-        </h1>
-        <p className="text-amber-800 mt-1">
-          Gestión de talento para Colombia y Florida · Ashley Turner - Personas y Cultura
-        </p>
+        <div className="flex justify-between items-start">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-amber-950">
+              Sistema de Candidaturas
+            </h1>
+            <p className="text-amber-800 mt-1">
+              Gestión de talento para Colombia y Florida · Ashley Turner - Personas y Cultura
+            </p>
+          </div>
+          <Link
+            href="/incidents"
+            className="rounded-lg border-2 border-orange-600 px-4 py-2 text-sm font-semibold text-orange-600 transition hover:bg-orange-50"
+          >
+            📊 Análisis de Incidencias
+          </Link>
+        </div>
       </header>
 
       {/* Filters and Search */}

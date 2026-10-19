@@ -1,0 +1,11 @@
+id_incidencia,fecha,categoria,descripcion,estado,local,pais,satisfaccion,email_cliente,telefono
+INC001,2026-10-15,calidad_comida,Carne poco cocida,cerrado,medellin_centro,CO,4,cliente@email.com,+573001234567
+INC002,2026-10-16,servicio_cliente,Tiempo de espera excesivo,en_proceso,miami_beach,US,,cliente2@email.com,+1234567890
+INC003,2026-10-17,pedidos_online,App no carga menú,abierto,bogota_zona_rosa,CO,,,
+INC004,2026-10-17,calidad_comida,Porción pequeña,cerrado,miami_downtown,US,3,cliente4@email.com,
+INC005,2026-10-18,infraestructura,Aire acondicionado no funciona,en_proceso,cali_norte,CO,,,
+INC006,2026-10-18,facturacion,Cobro duplicado,cerrado,orlando_international,US,5,cliente6@email.com,+14075551234
+INC007,2026-10-18,servicio_cliente,Mesero grosero,abierto,medellin_poblado,CO,,,
+INC008,2026-10-19,calidad_comida,Comida fría,cerrado,tampa_centro,US,2,cliente8@email.com,
+INC009,2026-10-19,operaciones,Falta de ingredientes,descartado,bogota_usaquen,CO,,,
+INC010,2026-10-19,calidad_comida,Sabor diferente al habitual,cerrado,cartagena_centro,CO,4,cliente10@email.com,+573109876543
