@@ -84,7 +84,7 @@ const data = await response.json();
 ## Iniciar el Servidor
 
 ```bash
-cd apps/ats-api
+cd services/api
 source venv/bin/activate
 python -m uvicorn app.main:app --reload --port 8000
 ```

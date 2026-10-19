@@ -1,8 +1,12 @@
-# `docs` folder
+# `apps` Folder
 
-This folder holds **cross-cutting documentation** for the monorepo: architecture guides, technical decisions, conventions, processes, and any material shared across applications, pipelines, agents, and workflows.
+This folder contains **all the applications of the monorepo** related to the company for the cross-functional AI Engineering project (for example: web applications, APIs, internal dashboards, customer portals, etc.).
 
-- **Main purpose**: provide a single place for “global” project documentation (not tied to one app or agent only).
-- **Recommendation**: organize docs by topic (architecture, deployment, data, security, observability, etc.) and keep links from each component’s README to these guides.
+Each subfolder inside `apps/` must correspond to **one specific application** (for example: `web-portal`, `admin-api`, `backoffice-dashboard`) and include its own technical and functional documentation.
 
-> _Spanish version: [README.es.md](./README.es.md)._
+- **Main purpose**: to centralize in a single monorepo all the applications that support the company's use cases.
+- **Recommendation**: document in this file (or in sub-READMEs) the applications you add, their objective, the technology used, and how to run them in development, testing, and production environments.
+
+## Current apps
+
+- `brasaland-web`: landing page (`apps/index.html`) and a single application form (`apps/application.html`) with vanilla JavaScript validation (`apps/validation.js`), WCAG-oriented accessibility, and SEO structured data.
