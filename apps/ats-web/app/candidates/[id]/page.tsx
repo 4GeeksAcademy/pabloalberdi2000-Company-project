@@ -157,13 +157,23 @@ export default function CandidateDetailPage({ params }: { params: { id: string }
       <div className="rounded-lg border border-amber-200 bg-white shadow-sm p-6">
         {/* Header */}
         <div className="border-b border-amber-100 pb-6 mb-6">
-          <h1 className="text-3xl font-bold text-amber-950 mb-2">
-            {candidate.full_name}
-          </h1>
-          <p className="text-amber-800">
-            {candidate.position} · {COUNTRY_LABELS[candidate.country]}
-            {candidate.location_preference && ` · ${candidate.location_preference}`}
-          </p>
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-2">
+            <div>
+              <h1 className="text-3xl font-bold text-amber-950">
+                {candidate.full_name}
+              </h1>
+              <p className="text-amber-800 mt-2">
+                {candidate.position} · {COUNTRY_LABELS[candidate.country]}
+                {candidate.location_preference && ` · ${candidate.location_preference}`}
+              </p>
+            </div>
+            <Link
+              href={`/candidates/${candidateId}/edit`}
+              className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-600 focus:ring-offset-2 text-center"
+            >
+              ✏️ Editar Candidato
+            </Link>
+          </div>
         </div>
 
         {/* Info Grid */}
