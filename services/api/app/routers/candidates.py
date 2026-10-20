@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
-from typing import Optional
+from typing import Optional, Dict
 from datetime import date
 
 from ..database import get_db
@@ -15,6 +15,8 @@ from ..schemas import (
     NoteCreate,
     NoteResponse,
 )
+# Hito 4: Autenticación JWT
+from ..auth.dependencies import get_current_active_user, require_manager_or_admin
 
 router = APIRouter(
     prefix="",
@@ -27,7 +29,8 @@ async def list_candidates(
     status: Optional[str] = Query(None, description="Filter by status"),
     stage: Optional[str] = Query(None, description="Filter by stage"),
     search: Optional[str] = Query(None, description="Search by name or email"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_active_user)  # Hito 4: Protegido
 ):
     """
     List all candidates with optional filters.
@@ -60,7 +63,8 @@ async def list_candidates(
 @router.get("/records/{id}", response_model=CandidateResponse)
 async def get_candidate(
     id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_active_user)  # Hito 4: Protegido
 ):
     """
     Get a candidate by ID.
@@ -111,7 +115,8 @@ async def create_candidate(
 async def update_candidate(
     id: int,
     candidate_data: CandidateUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_active_user)  # Hito 4: Protegido
 ):
     """
     Update a candidate's information.
@@ -147,7 +152,8 @@ async def update_candidate(
 async def update_candidate_status(
     id: int,
     status_data: CandidateStatusUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_manager_or_admin)  # Hito 4: Requiere manager/admin
 ):
     """
     Update only the candidate's status.
@@ -169,7 +175,8 @@ async def update_candidate_status(
 async def update_candidate_stage(
     id: int,
     stage_data: CandidateStageUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_manager_or_admin)  # Hito 4: Requiere manager/admin
 ):
     """
     Update only the candidate's recruitment stage.
@@ -212,7 +219,8 @@ async def get_candidate_notes(
 async def create_candidate_note(
     id: int,
     note_data: NoteCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_active_user)  # Hito 4: Protegido
 ):
     """
     Create a new note for a candidate.
@@ -241,7 +249,8 @@ async def create_candidate_note(
 async def delete_candidate_note(
     id: int,
     note_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_active_user)  # Hito 4: Protegido
 ):
     """
     Delete a note from a candidate.

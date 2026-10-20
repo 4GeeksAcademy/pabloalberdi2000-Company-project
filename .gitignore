@@ -47,6 +47,10 @@ build/
 *.sqlite
 *.sqlite3
 
+# Hito 4: TinyDB users database (contiene datos sensibles)
+users_db.json
+services/api/users_db.json
+
 # Testing & Coverage
 .coverage
 htmlcov/
