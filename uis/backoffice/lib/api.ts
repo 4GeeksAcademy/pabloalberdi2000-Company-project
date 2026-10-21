@@ -12,11 +12,13 @@ import type {
   Stage,
   CandidateFilters,
 } from '@/types';
+import { getToken, removeToken } from './auth';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 /**
  * Generic fetch wrapper with error handling
+ * Automatically injects JWT token if available
  */
 async function fetchAPI<T>(
   endpoint: string,
@@ -24,14 +26,28 @@ async function fetchAPI<T>(
 ): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
 
+  // Inject Authorization header if token exists
+  const token = getToken();
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    ...(token && { 'Authorization': `Bearer ${token}` }),
+    ...options?.headers,
+  };
+
   try {
     const response = await fetch(url, {
       ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options?.headers,
-      },
+      headers,
     });
+
+    // Handle 401 Unauthorized - Token invalid or expired
+    if (response.status === 401) {
+      removeToken();
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login';
+      }
+      throw new Error('Sesión expirada. Por favor, inicia sesión nuevamente.');
+    }
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ detail: 'Error desconocido' }));
@@ -178,4 +194,83 @@ export async function deleteNote(
  */
 export async function healthCheck(): Promise<{ status: string }> {
   return fetchAPI<{ status: string }>('/health');
+}
+
+// ============ AUTHENTICATION API ============
+
+export interface LoginCredentials {
+  email: string;
+  password: string;
+}
+
+export interface RegisterData {
+  email: string;
+  password: string;
+  role?: 'admin' | 'manager' | 'user';
+  name?: string;
+  phone?: string;
+  address?: string;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  token_type: string;
+}
+
+export interface User {
+  id: number;
+  email: string;
+  role: 'admin' | 'manager' | 'user';
+  is_active: boolean;
+  created_at: string;
+  profile?: {
+    id: number;
+    user_id: number;
+    name: string;
+    phone: string;
+    address: string;
+  } | null;
+}
+
+/**
+ * Login user and receive JWT token
+ */
+export async function login(credentials: LoginCredentials): Promise<AuthResponse> {
+  return fetchAPI<AuthResponse>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(credentials),
+  });
+}
+
+/**
+ * Register new user
+ */
+export async function register(data: RegisterData): Promise<User> {
+  return fetchAPI<User>('/users', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Get current authenticated user
+ * Requires valid JWT token
+ */
+export async function getCurrentUser(): Promise<User> {
+  return fetchAPI<User>('/auth/me');
+}
+
+/**
+ * Update user profile (name, phone, address)
+ * Requires valid JWT token
+ */
+export async function updateProfile(data: {
+  name?: string;
+  phone?: string;
+  address?: string;
+}): Promise<User> {
+  return fetchAPI<User>('/profiles/me', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
 }

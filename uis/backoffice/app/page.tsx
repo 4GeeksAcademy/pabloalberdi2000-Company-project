@@ -4,12 +4,14 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getCandidates } from '@/lib/api';
+import { useAuth } from '@/hooks/useAuth';
 import type { Candidate, Status, Stage } from '@/types';
 import { STATUS_LABELS, STAGE_LABELS, COUNTRY_LABELS } from '@/types';
 
 export default function CandidatesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { isAuthenticated, loading: authLoading } = useAuth();
 
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -18,6 +20,13 @@ export default function CandidatesPage() {
 
   const statusFilter = searchParams.get('status') as Status | null;
   const stageFilter = searchParams.get('stage') as Stage | null;
+
+  // Route protection
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push('/login');
+    }
+  }, [isAuthenticated, authLoading, router]);
 
   useEffect(() => {
     async function fetchData() {
@@ -48,6 +57,22 @@ export default function CandidatesPage() {
     }
     router.push(`/?${params.toString()}`);
   };
+
+  // Don't render if not authenticated
+  if (authLoading) {
+    return (
+      <div className="container mx-auto flex min-h-screen items-center justify-center px-4">
+        <div className="text-center">
+          <div className="mb-4 inline-block h-12 w-12 animate-spin rounded-full border-4 border-orange-600 border-t-transparent"></div>
+          <p className="text-amber-800">Cargando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return null;
+  }
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-7xl">

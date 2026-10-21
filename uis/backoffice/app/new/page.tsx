@@ -1,17 +1,26 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createCandidate } from '@/lib/api';
+import { useAuth } from '@/hooks/useAuth';
 import type { CandidateFormData, Country } from '@/types';
 import { POSITION_OPTIONS } from '@/types';
 
 export default function NewCandidatePage() {
   const router = useRouter();
+  const { isAuthenticated, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  // Route protection
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push('/login');
+    }
+  }, [isAuthenticated, authLoading, router]);
 
   const [formData, setFormData] = useState<CandidateFormData>({
     full_name: '',
@@ -91,6 +100,22 @@ export default function NewCandidatePage() {
       setErrors({ ...errors, [field]: undefined });
     }
   };
+
+  // Don't render if not authenticated
+  if (authLoading) {
+    return (
+      <div className="container mx-auto flex min-h-screen items-center justify-center px-4">
+        <div className="text-center">
+          <div className="mb-4 inline-block h-12 w-12 animate-spin rounded-full border-4 border-orange-600 border-t-transparent"></div>
+          <p className="text-amber-800">Cargando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return null;
+  }
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-3xl">

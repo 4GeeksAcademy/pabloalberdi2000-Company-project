@@ -1,7 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useAuth } from '@/hooks/useAuth';
 
 interface IncidentMetrics {
   total_procesados: number;
@@ -33,10 +35,19 @@ interface IncidentMetrics {
 }
 
 export default function IncidentsPage() {
+  const router = useRouter();
+  const { isAuthenticated, loading: authLoading } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<IncidentMetrics | null>(null);
+
+  // Route protection
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push('/login');
+    }
+  }, [isAuthenticated, authLoading, router]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -119,6 +130,22 @@ export default function IncidentsPage() {
     link.download = `resultados-incidencias-${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
   };
+
+  // Don't render if not authenticated
+  if (authLoading) {
+    return (
+      <div className="container mx-auto flex min-h-screen items-center justify-center px-4">
+        <div className="text-center">
+          <div className="mb-4 inline-block h-12 w-12 animate-spin rounded-full border-4 border-orange-600 border-t-transparent"></div>
+          <p className="text-amber-800">Cargando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return null;
+  }
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">

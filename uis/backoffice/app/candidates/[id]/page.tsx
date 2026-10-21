@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -11,12 +11,22 @@ import {
   createNote,
   deleteNote,
 } from '@/lib/api';
+import { useAuth } from '@/hooks/useAuth';
 import type { Candidate, Note, Status, Stage } from '@/types';
 import { STATUS_LABELS, STAGE_LABELS, COUNTRY_LABELS } from '@/types';
 
-export default function CandidateDetailPage({ params }: { params: { id: string } }) {
+export default function CandidateDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
-  const candidateId = parseInt(params.id);
+  const { isAuthenticated, loading: authLoading } = useAuth();
+  const resolvedParams = use(params);
+  const candidateId = parseInt(resolvedParams.id);
+
+  // Route protection
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push('/login');
+    }
+  }, [isAuthenticated, authLoading, router]);
 
   const [candidate, setCandidate] = useState<Candidate | null>(null);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -103,6 +113,22 @@ export default function CandidateDetailPage({ params }: { params: { id: string }
       alert('Error al eliminar nota: ' + (err instanceof Error ? err.message : 'Error desconocido'));
     }
   };
+
+  // Auth loading
+  if (authLoading) {
+    return (
+      <div className="container mx-auto flex min-h-screen items-center justify-center px-4">
+        <div className="text-center">
+          <div className="mb-4 inline-block h-12 w-12 animate-spin rounded-full border-4 border-orange-600 border-t-transparent"></div>
+          <p className="text-amber-800">Cargando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return null;
+  }
 
   if (loading) {
     return (
