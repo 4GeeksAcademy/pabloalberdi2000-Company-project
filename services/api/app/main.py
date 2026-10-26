@@ -1,4 +1,5 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .database import engine, Base
@@ -25,6 +26,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# ============================================================
+# GLOBAL EXCEPTION HANDLER (Fase 4 - Incident Management)
+# ============================================================
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """
+    Manejador global de excepciones no controladas.
+
+    Captura excepciones no manejadas y retorna error genérico sin exponer
+    stack traces ni detalles internos de implementación.
+
+    HTTPExceptions (400, 404, etc.) NO son capturadas aquí - FastAPI las maneja.
+    """
+    # Log para debugging (en producción usar logging.error)
+    print(f"❌ Unhandled exception: {type(exc).__name__}: {str(exc)}")
+
+    # Retornar error genérico 500
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An internal error occurred. Please try again later."}
+    )
+
 # Include routers
 app.include_router(candidates.router)
 app.include_router(incidents.router)
@@ -39,9 +64,10 @@ app.include_router(profiles.router)
 async def root():
     """Root endpoint - API health check"""
     return {
-        "message": "Brasaland ATS API",
-        "version": "1.0.0",
+        "message": "Brasaland API",
+        "version": "2.0.0",
         "status": "operational",
+        "features": ["ats", "incidents-crud", "auth"],
         "docs": "/docs"
     }
 

@@ -16,3 +16,6 @@ passlib[bcrypt]==1.7.4
 
 # Email service (Hito 6 - AUTH-03)
 resend==2.4.0
+
+# Shared package - Transversal validations and domain logic
+-e ../../packages/shared/python

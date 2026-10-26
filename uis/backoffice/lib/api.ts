@@ -322,3 +322,136 @@ export async function updateProfile(data: {
     body: JSON.stringify(data),
   });
 }
+
+// ============ INCIDENTS API (Fase 4) ============
+
+export type IncidentStatus = 'open' | 'in_progress' | 'resolved' | 'discarded';
+export type IncidentOrigin = 'customer' | 'branch' | 'internal';
+export type IncidentCategory =
+  | 'calidad_comida'
+  | 'servicio_cliente'
+  | 'operaciones'
+  | 'infraestructura'
+  | 'pedidos_online'
+  | 'facturacion';
+export type IncidentBranch =
+  | 'medellin_centro' | 'medellin_poblado' | 'medellin_envigado'
+  | 'bogota_zona_rosa' | 'bogota_usaquen' | 'bogota_suba'
+  | 'cali_norte' | 'cali_sur'
+  | 'cartagena_centro' | 'barranquilla_norte'
+  | 'miami_beach' | 'miami_downtown'
+  | 'orlando_international' | 'tampa_centro'
+  | 'central';
+
+export interface Incident {
+  id: string;
+  title: string;
+  description: string;
+  category: IncidentCategory;
+  status: IncidentStatus;
+  origin: IncidentOrigin;
+  branch: IncidentBranch;
+  created_at: string;
+  updated_at: string;
+  satisfaction?: number;
+  legacy_id?: string;
+}
+
+export interface IncidentCreateData {
+  title: string;
+  description: string;
+  category: IncidentCategory;
+  origin: IncidentOrigin;
+  branch: IncidentBranch;
+}
+
+export interface IncidentStatusUpdate {
+  status: IncidentStatus;
+  satisfaction?: number;
+}
+
+export interface IncidentFilters {
+  status?: IncidentStatus;
+  origin?: IncidentOrigin;
+  branch?: IncidentBranch;
+  category?: IncidentCategory;
+  limit?: number;
+  offset?: number;
+}
+
+export interface IncidentListResponse {
+  total: number;
+  items: Incident[];
+  limit: number;
+  offset: number;
+}
+
+export interface IncidentSummary {
+  total_incidents: number;
+  by_status: Record<string, number>;
+  by_category: Record<string, number>;
+  by_origin: Record<string, number>;
+  by_branch: Record<string, number>;
+  avg_satisfaction: number | null;
+}
+
+/**
+ * Create new incident (starts as 'open')
+ * Requires JWT authentication
+ */
+export async function createIncident(data: IncidentCreateData): Promise<Incident> {
+  return fetchAPI<Incident>('/incidents', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * List incidents with optional filters
+ * Requires JWT authentication
+ */
+export async function getIncidents(filters?: IncidentFilters): Promise<IncidentListResponse> {
+  const params = new URLSearchParams();
+
+  if (filters?.status) params.set('status', filters.status);
+  if (filters?.origin) params.set('origin', filters.origin);
+  if (filters?.branch) params.set('branch', filters.branch);
+  if (filters?.category) params.set('category', filters.category);
+  if (filters?.limit) params.set('limit', filters.limit.toString());
+  if (filters?.offset) params.set('offset', filters.offset.toString());
+
+  const queryString = params.toString();
+  const endpoint = queryString ? `/incidents?${queryString}` : '/incidents';
+
+  return fetchAPI<IncidentListResponse>(endpoint);
+}
+
+/**
+ * Get incident detail by UUID
+ * Requires JWT authentication
+ */
+export async function getIncident(id: string): Promise<Incident> {
+  return fetchAPI<Incident>(`/incidents/${id}`);
+}
+
+/**
+ * Update incident status (state machine validation)
+ * Requires JWT authentication
+ */
+export async function updateIncidentStatus(
+  id: string,
+  data: IncidentStatusUpdate
+): Promise<Incident> {
+  return fetchAPI<Incident>(`/incidents/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Get aggregate metrics (summary)
+ * Requires JWT authentication
+ */
+export async function getIncidentsSummary(): Promise<IncidentSummary> {
+  return fetchAPI<IncidentSummary>('/incidents/summary');
+}

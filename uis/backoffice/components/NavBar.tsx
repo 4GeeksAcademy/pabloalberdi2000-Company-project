@@ -33,10 +33,10 @@ export function NavBar() {
                   Nueva Candidatura
                 </Link>
                 <Link
-                  href="/incidents"
+                  href="/incidents-manager"
                   className="text-sm text-amber-800 hover:text-amber-950 transition"
                 >
-                  Incidencias
+                  Gestor de Incidencias
                 </Link>
 
                 <div className="mx-2 h-6 w-px bg-amber-300"></div>
