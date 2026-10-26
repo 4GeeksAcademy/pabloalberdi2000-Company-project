@@ -1,0 +1,9 @@
+README.md
+setup.py
+brasaland_shared/__init__.py
+brasaland_shared/constants.py
+brasaland_shared/validators.py
+brasaland_shared.egg-info/PKG-INFO
+brasaland_shared.egg-info/SOURCES.txt
+brasaland_shared.egg-info/dependency_links.txt
+brasaland_shared.egg-info/top_level.txt
