@@ -91,3 +91,29 @@ class LoginRequest(BaseModel):
 class UserWithProfile(UserResponse):
     """Usuario con su perfil vinculado (para /auth/me)"""
     profile: Optional[ProfileResponse] = None
+
+
+# ============================================================
+# Password Management Schemas (Hito 6 - AUTH-03)
+# ============================================================
+
+class ForgotPasswordRequest(BaseModel):
+    """Solicitud de reset de contraseña"""
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    """Reset de contraseña con token"""
+    token: str
+    new_password: str = Field(..., min_length=8, max_length=100, description="Mínimo 8 caracteres")
+
+
+class ChangePasswordRequest(BaseModel):
+    """Cambio de contraseña (usuario autenticado)"""
+    current_password: str
+    new_password: str = Field(..., min_length=8, max_length=100, description="Mínimo 8 caracteres")
+
+
+class MessageResponse(BaseModel):
+    """Respuesta genérica con mensaje"""
+    message: str

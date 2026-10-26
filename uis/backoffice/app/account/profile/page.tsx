@@ -105,6 +105,16 @@ export default function ProfilePage() {
           </div>
 
           <div>
+            <label className="block text-sm font-medium text-amber-800">Seguridad</label>
+            <Link
+              href="/account/change-password"
+              className="mt-2 inline-block rounded-lg border-2 border-orange-600 px-4 py-2 text-sm font-semibold text-orange-600 hover:bg-orange-50"
+            >
+              Cambiar Contraseña
+            </Link>
+          </div>
+
+          <div>
             <label className="block text-sm font-medium text-amber-800">Miembro desde</label>
             <p className="mt-1 text-lg text-amber-950">
               {new Date(user.created_at).toLocaleDateString('es-ES', {

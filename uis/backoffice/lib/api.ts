@@ -196,6 +196,54 @@ export async function healthCheck(): Promise<{ status: string }> {
   return fetchAPI<{ status: string }>('/health');
 }
 
+// ============ PASSWORD MANAGEMENT API (Hito 6 - AUTH-03) ============
+
+export interface MessageResponse {
+  message: string;
+}
+
+/**
+ * Request password reset email
+ * Always returns same message (anti-enumeration)
+ */
+export async function requestPasswordReset(email: string): Promise<MessageResponse> {
+  return fetchAPI<MessageResponse>('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+/**
+ * Reset password with token
+ * Validates token and updates password
+ */
+export async function resetPassword(token: string, newPassword: string): Promise<MessageResponse> {
+  return fetchAPI<MessageResponse>('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({
+      token,
+      new_password: newPassword
+    }),
+  });
+}
+
+/**
+ * Change password (authenticated user)
+ * Requires valid JWT token
+ */
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string
+): Promise<MessageResponse> {
+  return fetchAPI<MessageResponse>('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  });
+}
+
 // ============ AUTHENTICATION API ============
 
 export interface LoginCredentials {

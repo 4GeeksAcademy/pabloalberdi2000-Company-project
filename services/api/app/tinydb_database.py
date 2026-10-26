@@ -18,10 +18,12 @@ db = TinyDB(DB_PATH)
 # Tablas
 users_table = db.table('users')
 profiles_table = db.table('profiles')
+reset_tokens_table = db.table('reset_tokens')  # Hito 6 - AUTH-03
 
 # Query helpers
 User = Query()
 Profile = Query()
+ResetToken = Query()  # Hito 6 - AUTH-03
 
 
 def get_tinydb():
@@ -48,3 +50,37 @@ def get_profile_by_user_id(user_id: int) -> Optional[dict]:
     """Helper: Buscar perfil por user_id"""
     result = profiles_table.search(Profile.user_id == user_id)
     return result[0] if result else None
+
+
+# ============ RESET TOKENS HELPERS (Hito 6 - AUTH-03) ============
+
+def is_reset_token_used(jti: str) -> bool:
+    """
+    Verifica si un reset token ya fue usado.
+
+    Args:
+        jti: ID único del token (JWT ID)
+
+    Returns:
+        True si el token ya fue usado, False en caso contrario
+    """
+    result = reset_tokens_table.search(ResetToken.jti == jti)
+    return len(result) > 0
+
+
+def mark_reset_token_as_used(jti: str, user_id: int):
+    """
+    Marca un reset token como usado (invalidado).
+
+    Args:
+        jti: ID único del token
+        user_id: ID del usuario que usó el token
+    """
+    from datetime import datetime
+
+    reset_tokens_table.insert({
+        "jti": jti,
+        "user_id": user_id,
+        "used_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.utcnow().isoformat()
+    })

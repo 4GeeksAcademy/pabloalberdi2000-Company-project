@@ -13,6 +13,15 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     algorithm: str = "HS256"
 
+    # Password Reset settings (Hito 6 - AUTH-03)
+    reset_token_secret_key: str = "DIFFERENT_SECRET_FOR_RESET_TOKENS_MIN_32_CHARS"
+    reset_token_expire_minutes: int = 30
+
+    # Email Service (Resend)
+    resend_api_key: str = ""
+    email_from: str = "onboarding@resend.dev"
+    frontend_url: str = "http://localhost:3000"
+
     class Config:
         env_file = ".env"
 
