@@ -39,25 +39,32 @@ async def list_candidates(
     - **stage**: Filter by recruitment stage (aplicacion, revision, entrevista, oferta, finalizado)
     - **search**: Search by name or email (case-insensitive)
     """
-    query = db.query(Candidate)
+    try:
+        query = db.query(Candidate)
 
-    if status:
-        query = query.filter(Candidate.status == status)
+        if status:
+            query = query.filter(Candidate.status == status)
 
-    if stage:
-        query = query.filter(Candidate.stage == stage)
+        if stage:
+            query = query.filter(Candidate.stage == stage)
 
-    if search:
-        search_term = f"%{search}%"
-        query = query.filter(
-            or_(
-                Candidate.full_name.ilike(search_term),
-                Candidate.email.ilike(search_term)
+        if search:
+            search_term = f"%{search}%"
+            query = query.filter(
+                or_(
+                    Candidate.full_name.ilike(search_term),
+                    Candidate.email.ilike(search_term)
+                )
             )
-        )
 
-    candidates = query.order_by(Candidate.application_date.desc()).all()
-    return candidates
+        candidates = query.order_by(Candidate.application_date.desc()).all()
+        return candidates
+    except Exception as e:
+        print(f"Database error in list_candidates: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Error al listar candidatos. Intenta nuevamente"
+        )
 
 
 @router.get("/records/{id}", response_model=CandidateResponse)
@@ -71,7 +78,14 @@ async def get_candidate(
 
     Returns full candidate information including all fields.
     """
-    candidate = db.query(Candidate).filter(Candidate.id == id).first()
+    try:
+        candidate = db.query(Candidate).filter(Candidate.id == id).first()
+    except Exception as e:
+        print(f"Database error in get_candidate: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Error al consultar candidato. Intenta nuevamente"
+        )
 
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidato no encontrado")

@@ -37,6 +37,12 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
   const [noteAuthor, setNoteAuthor] = useState('');
   const [noteLoading, setNoteLoading] = useState(false);
 
+  // Estados de error específicos con CTA
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [stageError, setStageError] = useState<string | null>(null);
+  const [noteError, setNoteError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
@@ -60,32 +66,35 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
   const handleStatusChange = async (newStatus: Status) => {
     if (!candidate) return;
 
+    setStatusError(null);
     try {
       await updateCandidateStatus(candidateId, newStatus);
       setCandidate({ ...candidate, status: newStatus });
     } catch (err) {
-      alert('Error al actualizar estado: ' + (err instanceof Error ? err.message : 'Error desconocido'));
+      setStatusError(err instanceof Error ? err.message : 'Error al actualizar estado');
     }
   };
 
   const handleStageChange = async (newStage: Stage) => {
     if (!candidate) return;
 
+    setStageError(null);
     try {
       await updateCandidateStage(candidateId, newStage);
       setCandidate({ ...candidate, stage: newStage });
     } catch (err) {
-      alert('Error al actualizar etapa: ' + (err instanceof Error ? err.message : 'Error desconocido'));
+      setStageError(err instanceof Error ? err.message : 'Error al actualizar etapa');
     }
   };
 
   const handleAddNote = async () => {
     if (!newNoteContent.trim() || !noteAuthor.trim()) {
-      alert('Por favor completa todos los campos de la nota');
+      setNoteError('Por favor completa todos los campos de la nota');
       return;
     }
 
     setNoteLoading(true);
+    setNoteError(null);
     try {
       const note = await createNote(candidateId, {
         content: newNoteContent,
@@ -95,7 +104,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
       setNewNoteContent('');
       // Don't clear author - likely same person adding multiple notes
     } catch (err) {
-      alert('Error al crear nota: ' + (err instanceof Error ? err.message : 'Error desconocido'));
+      setNoteError(err instanceof Error ? err.message : 'Error al crear nota');
     } finally {
       setNoteLoading(false);
     }
@@ -106,11 +115,12 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
       return;
     }
 
+    setDeleteError(null);
     try {
       await deleteNote(candidateId, noteId);
       setNotes(notes.filter((n) => n.id !== noteId));
     } catch (err) {
-      alert('Error al eliminar nota: ' + (err instanceof Error ? err.message : 'Error desconocido'));
+      setDeleteError(err instanceof Error ? err.message : 'Error al eliminar nota');
     }
   };
 
@@ -271,6 +281,17 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
                 </option>
               ))}
             </select>
+            {statusError && (
+              <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
+                <p className="text-sm text-red-700 mb-2">{statusError}</p>
+                <button
+                  onClick={() => handleStatusChange(candidate.status)}
+                  className="text-sm font-semibold text-red-600 hover:text-red-700 underline"
+                >
+                  Reintentar
+                </button>
+              </div>
+            )}
           </div>
 
           <div>
@@ -288,6 +309,17 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
                 </option>
               ))}
             </select>
+            {stageError && (
+              <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
+                <p className="text-sm text-red-700 mb-2">{stageError}</p>
+                <button
+                  onClick={() => handleStageChange(candidate.stage)}
+                  className="text-sm font-semibold text-red-600 hover:text-red-700 underline"
+                >
+                  Reintentar
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -311,6 +343,11 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
               className="w-full rounded-lg border border-amber-300 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-orange-600 focus:ring-2 focus:ring-orange-200 mb-3"
               rows={3}
             />
+            {noteError && (
+              <div className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3">
+                <p className="text-sm text-red-700">{noteError}</p>
+              </div>
+            )}
             <button
               onClick={handleAddNote}
               disabled={noteLoading}
@@ -319,6 +356,18 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
               {noteLoading ? 'Agregando...' : 'Agregar Nota'}
             </button>
           </div>
+
+          {deleteError && (
+            <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4">
+              <p className="text-sm text-red-700 mb-2">{deleteError}</p>
+              <button
+                onClick={() => setDeleteError(null)}
+                className="text-sm font-semibold text-red-600 hover:text-red-700 underline"
+              >
+                Cerrar
+              </button>
+            </div>
+          )}
 
           {/* Notes List */}
           <div className="space-y-3">

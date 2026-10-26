@@ -40,7 +40,11 @@ export default function CandidatesPage() {
         });
         setCandidates(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Error desconocido');
+        // Sanitizar error antes de mostrar al usuario
+        const errorMessage = err instanceof Error ? err.message : 'Error al cargar candidatos';
+        setError(errorMessage.includes('network') || errorMessage.includes('fetch')
+          ? 'Error de conexión. Verifica tu red e intenta nuevamente'
+          : errorMessage);
       } finally {
         setLoading(false);
       }
@@ -140,8 +144,19 @@ export default function CandidatesPage() {
 
       {/* Error State */}
       {error && !loading && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          <strong>Error:</strong> {error}
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+          <div className="flex items-start mb-3">
+            <strong className="text-red-800">Error:</strong>
+            <p className="ml-2 text-red-700">{error}</p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => window.location.reload()}
+              className="rounded bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+            >
+              Recargar página
+            </button>
+          </div>
         </div>
       )}
 

@@ -39,6 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(userData);
       } catch (error) {
         // Token invalid or expired - clean up
+        console.error('Failed to load user on mount:', error);
         removeToken();
       } finally {
         setLoading(false);
@@ -49,20 +50,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string) => {
-    const response = await apiLogin({ email, password });
-    setToken(response.access_token);
+    try {
+      const response = await apiLogin({ email, password });
+      setToken(response.access_token);
 
-    // Load user data
-    const userData = await getCurrentUser();
-    setUser(userData);
+      // Load user data
+      const userData = await getCurrentUser();
+      setUser(userData);
+    } catch (error) {
+      // Clean up on failure
+      removeToken();
+      throw error; // Re-throw para que el componente lo maneje
+    }
   };
 
   const register = async (data: RegisterData) => {
-    // Create user
-    await apiRegister(data);
+    try {
+      // Create user
+      await apiRegister(data);
 
-    // Auto-login after registration
-    await login(data.email, data.password);
+      // Auto-login after registration
+      await login(data.email, data.password);
+    } catch (error) {
+      console.error('Registration or auto-login failed:', error);
+      throw error; // Re-throw para que el componente lo maneje
+    }
   };
 
   const logout = () => {

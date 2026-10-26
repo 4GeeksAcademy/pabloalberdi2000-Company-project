@@ -142,8 +142,13 @@ async def forgot_password(request: ForgotPasswordRequest):
 
     if user:
         # Usuario existe - generar token y enviar email
-        reset_token = create_reset_token(user.doc_id)
-        send_password_reset_email(request.email, reset_token)
+        try:
+            reset_token = create_reset_token(user.doc_id)
+            send_password_reset_email(request.email, reset_token)
+        except Exception as e:
+            # Log error pero no exponer al cliente (anti-enumeración)
+            print(f"Failed to send reset email to {request.email}: {str(e)}")
+            # ⚠️ Mantener mismo mensaje para no revelar si email existe
 
     # ⚠️ CRÍTICO: Siempre mismo mensaje (no revelar si email existe)
     return {

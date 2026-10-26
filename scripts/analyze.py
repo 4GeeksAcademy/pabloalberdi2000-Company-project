@@ -317,11 +317,19 @@ def main():
     # Mostrar resultados
     imprimir_resultados(metricas)
 
+    # ✅ CRÍTICO: Validar que se procesaron registros válidos
+    if metricas['total_validos'] == 0:
+        print("\n⚠️  ADVERTENCIA: No se encontraron registros válidos", file=sys.stderr)
+        print(f"Total procesado: {metricas['total_procesados']}", file=sys.stderr)
+        print(f"Todos inválidos: {metricas['total_invalidos']}", file=sys.stderr)
+        sys.exit(1)  # ✅ Código de salida 1 indica fallo
+
     # Exportar si se solicitó
-    if args.export and metricas['total_validos'] > 0:
+    if args.export:
         exportar_resultados(metricas)
 
     print("\n✅ Análisis completado\n")
+    sys.exit(0)  # ✅ Código de salida 0 indica éxito
 
 
 if __name__ == "__main__":
