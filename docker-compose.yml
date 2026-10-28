@@ -1,0 +1,123 @@
+# ============================================
+# Docker Compose - Brasaland Digital Platform
+# Monorepo Completo para Desarrollo Local
+# ============================================
+
+version: '3.9'
+
+services:
+  # ============================================
+  # Backend - FastAPI
+  # ============================================
+  backend:
+    build:
+      context: ./services
+      dockerfile: Dockerfile
+      target: application
+    container_name: brasaland-backend
+    ports:
+      - "8000:8000"
+    environment:
+      # Base config
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - CORS_ORIGINS=http://localhost:3001,http://frontend:3001
+
+      # JWT Auth
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production-min-32-chars}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      - ALGORITHM=HS256
+
+      # Password Reset
+      - RESET_TOKEN_SECRET_KEY=${RESET_TOKEN_SECRET_KEY:-dev-reset-secret-min-32-chars}
+      - RESET_TOKEN_EXPIRE_MINUTES=${RESET_TOKEN_EXPIRE_MINUTES:-30}
+
+      # Resend Email
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - EMAIL_FROM=${EMAIL_FROM:-onboarding@resend.dev}
+      - FRONTEND_URL=http://localhost:3001
+
+      # Supabase (Inventory dual-DB architecture)
+      - SUPABASE_DATABASE_URL=${SUPABASE_DATABASE_URL:-}
+    volumes:
+      # Hot reload para desarrollo
+      - ./services/api:/app:delegated
+      # Persistencia de TinyDB
+      - backend-data:/app/data
+    networks:
+      - brasaland-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      com.brasaland.service: "backend"
+      com.brasaland.description: "FastAPI - ATS, Incidents & Inventory API"
+
+  # ============================================
+  # Frontend - Next.js
+  # ============================================
+  frontend:
+    build:
+      context: ./uis
+      dockerfile: Dockerfile
+      target: development
+    container_name: brasaland-frontend
+    ports:
+      - "3001:3001"
+    environment:
+      # Next.js config
+      - NODE_ENV=development
+      - PORT=3001
+
+      # API URLs (internal Docker network)
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+
+      # External API URL (para navegador del desarrollador)
+      - NEXT_PUBLIC_EXTERNAL_API_URL=http://localhost:8000
+    volumes:
+      # Hot reload para desarrollo
+      - ./uis/backoffice:/app/backoffice:delegated
+
+      # Excluir node_modules del bind mount (performance)
+      - /app/backoffice/node_modules
+      - /app/backoffice/.next
+    networks:
+      - brasaland-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    labels:
+      com.brasaland.service: "frontend"
+      com.brasaland.description: "Next.js 15 - Backoffice"
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  brasaland-network:
+    driver: bridge
+    name: brasaland-network
+    labels:
+      com.brasaland.network: "main"
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  backend-data:
+    driver: local
+    name: brasaland-backend-data
+    labels:
+      com.brasaland.volume: "backend-persistence"
+      com.brasaland.description: "TinyDB data (users, profiles, reset_tokens, incidents)"

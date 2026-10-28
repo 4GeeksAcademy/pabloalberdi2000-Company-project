@@ -66,3 +66,11 @@ Desktop.ini
 *.log
 logs/
 *.log.*
+
+# Docker
+docker-compose.override.yml
+.dockerignore.local
+
+# Docker volumes (backup files)
+backups/
+*.tar.gz
