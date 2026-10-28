@@ -1,18 +1,34 @@
+/**
+ * useAuth Hook - Client-side Auth Guard
+ * 
+ * Verifica que el usuario tenga token JWT válido.
+ * Si no está autenticado, redirige a /login automáticamente.
+ */
+
 'use client';
 
-import { useContext } from 'react';
-import { AuthContext } from '@/contexts/AuthContext';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { getToken } from '@/lib/auth';
 
-/**
- * Hook to access authentication context
- * Must be used within AuthProvider
- */
 export function useAuth() {
-  const context = useContext(AuthContext);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const router = useRouter();
 
-  if (!context) {
-    throw new Error('useAuth debe usarse dentro de AuthProvider');
-  }
+  useEffect(() => {
+    const token = getToken();
 
-  return context;
+    if (!token) {
+      router.push('/login');
+      setIsAuthenticated(false);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsAuthenticated(true);
+    setIsLoading(false);
+  }, [router]);
+
+  return { isAuthenticated, isLoading };
 }

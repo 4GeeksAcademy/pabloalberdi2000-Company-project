@@ -38,6 +38,12 @@ export function NavBar() {
                 >
                   Gestor de Incidencias
                 </Link>
+                <Link
+                  href="/inventory/ingredients"
+                  className="text-sm text-amber-800 hover:text-amber-950 transition"
+                >
+                  🍖 Inventario
+                </Link>
 
                 <div className="mx-2 h-6 w-px bg-amber-300"></div>
 
