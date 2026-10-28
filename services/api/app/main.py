@@ -5,6 +5,8 @@ from .config import settings
 from .database import engine, Base
 from .routers import candidates, incidents, auth, users, profiles, inventory  # Inventory system
 from .database_supabase import init_db as init_inventory_db, check_db_connection
+from .middleware import TimingMiddleware  # Performance monitoring
+from .cache import cache  # Cache manager
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -34,6 +36,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add Timing Middleware for performance monitoring
+app.add_middleware(TimingMiddleware)
 
 
 # ============================================================
@@ -89,6 +94,21 @@ async def root():
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy"}
+
+
+@app.get("/cache/stats")
+async def cache_stats():
+    """
+    Cache statistics endpoint.
+
+    Returns:
+        - hits: Número de aciertos de caché
+        - misses: Número de fallos de caché
+        - hit_rate: Porcentaje de aciertos
+        - entries: Número de entradas en caché
+        - total_requests: Total de requests a caché
+    """
+    return cache.stats()
 
 
 if __name__ == "__main__":

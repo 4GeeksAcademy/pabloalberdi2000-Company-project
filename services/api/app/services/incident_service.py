@@ -25,6 +25,7 @@ from ..tinydb_database import (
     count_incidents,
     incidents_table
 )
+from ..cache import cached, cache_key  # Caching system
 
 
 # ============================================================

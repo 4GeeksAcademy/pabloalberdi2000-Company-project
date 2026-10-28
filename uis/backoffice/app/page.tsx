@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getCandidates } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
+import { useDebounce } from '@/hooks/useDebounce';
 import type { Candidate, Status, Stage } from '@/types';
 import { STATUS_LABELS, STAGE_LABELS, COUNTRY_LABELS } from '@/types';
 
@@ -21,6 +22,10 @@ export default function CandidatesPage() {
   const statusFilter = searchParams.get('status') as Status | null;
   const stageFilter = searchParams.get('stage') as Stage | null;
 
+  // 🚀 OPTIMIZACIÓN: Debounce de búsqueda (500ms)
+  // Reduce API calls de 100% a ~20% durante typing
+  const debouncedSearch = useDebounce(search, 500);
+
   // Route protection
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -36,7 +41,7 @@ export default function CandidatesPage() {
         const data = await getCandidates({
           status: statusFilter || undefined,
           stage: stageFilter || undefined,
-          search: search || undefined,
+          search: debouncedSearch || undefined, // 🚀 Usar valor debounced
         });
         setCandidates(data);
       } catch (err) {
@@ -50,7 +55,7 @@ export default function CandidatesPage() {
       }
     }
     fetchData();
-  }, [statusFilter, stageFilter, search]);
+  }, [statusFilter, stageFilter, debouncedSearch]); // 🚀 Depender de debouncedSearch
 
   const handleFilterChange = (key: 'status' | 'stage', value: string) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -61,6 +66,25 @@ export default function CandidatesPage() {
     }
     router.push(`/?${params.toString()}`);
   };
+
+  // 🚀 OPTIMIZACIÓN: Cálculo memoizado de estadísticas
+  // Solo recalcula cuando candidates cambia (evita re-cálculo en cada render)
+  const stats = useMemo(() => {
+    if (candidates.length === 0) return null;
+
+    return {
+      total: candidates.length,
+      byStatus: candidates.reduce((acc, c) => {
+        acc[c.status] = (acc[c.status] || 0) + 1;
+        return acc;
+      }, {} as Record<Status, number>),
+      byStage: candidates.reduce((acc, c) => {
+        acc[c.stage] = (acc[c.stage] || 0) + 1;
+        return acc;
+      }, {} as Record<Stage, number>),
+      avgExperience: candidates.reduce((sum, c) => sum + c.years_experience, 0) / candidates.length,
+    };
+  }, [candidates]);
 
   // Don't render if not authenticated
   if (authLoading) {

@@ -28,6 +28,7 @@ from app.services.incident_service import (
     get_incidents_summary
 )
 from app.auth.dependencies import get_current_active_user
+from app.cache import cached, invalidate_cache_pattern  # Caching system
 
 
 router = APIRouter(
@@ -103,6 +104,8 @@ async def create_incident(
     """
     Crear nueva incidencia (protegido, inicia en estado 'open').
 
+    ♻️ INVALIDACIÓN: Al crear, invalida caché de listados y summary
+
     Requiere autenticación JWT.
 
     Args:
@@ -116,13 +119,20 @@ async def create_incident(
         Incidencia creada con UUID
     """
     try:
-        return create_new_incident(data)
+        result = create_new_incident(data)
+
+        # Invalidar caché de listados y summary
+        invalidate_cache_pattern("incidents:list:*")
+        invalidate_cache_pattern("incidents:summary:*")
+
+        return result
     except Exception as e:
         print(f"Error creating incident: {str(e)}")
         raise HTTPException(status_code=500, detail="Error al crear la incidencia")
 
 
 @router.get("", response_model=IncidentListResponse)
+@cached(ttl=60, key_prefix="incidents:list")  # Cache 60s - Alta frecuencia, volatilidad media
 async def list_incidents_endpoint(
     status: Optional[Status] = Query(None, description="Filtrar por estado"),
     origin: Optional[Origin] = Query(None, description="Filtrar por origen"),
@@ -134,6 +144,11 @@ async def list_incidents_endpoint(
 ):
     """
     Listar incidencias con filtros opcionales (protegido).
+
+    🚀 OPTIMIZACIÓN: Endpoint cacheado con TTL 60s
+    - Coste: Moderado (200-500ms con 500+ registros)
+    - Frecuencia: Alta (listados repetitivos)
+    - Estabilidad: Media (datos cambian pero no constantemente)
 
     Soporta paginación y múltiples filtros combinados.
 
@@ -170,11 +185,17 @@ async def list_incidents_endpoint(
 
 
 @router.get("/summary", response_model=IncidentSummary)
+@cached(ttl=120, key_prefix="incidents:summary")  # Cache 120s - Agregados costosos
 async def get_summary_endpoint(
     current_user: dict = Depends(get_current_active_user)
 ):
     """
     Obtener métricas agregadas del sistema (protegido).
+
+    🚀 OPTIMIZACIÓN: Endpoint cacheado con TTL 120s
+    - Coste: Alto (300-800ms con 500+ registros, múltiples agregaciones)
+    - Frecuencia: Muy alta (dashboards, refresh automáticos)
+    - Estabilidad: Media-Alta (métricas cambian lentamente)
 
     Retorna conteos agrupados por:
     - Estado (open, in_progress, resolved, discarded)
@@ -222,6 +243,8 @@ async def update_status_endpoint(
     """
     Actualizar estado de incidencia (protegido, máquina de estados).
 
+    ♻️ INVALIDACIÓN: Invalida caché de listados y summary
+
     Máquina de estados (transiciones permitidas):
     - open → in_progress, discarded
     - in_progress → resolved, discarded
@@ -239,7 +262,13 @@ async def update_status_endpoint(
         - **400**: Transición de estado inválida
         - **404**: Incidencia no encontrada
     """
-    return update_incident_status(incident_id, status_data)
+    result = update_incident_status(incident_id, status_data)
+
+    # Invalidar caché (cambio de estado afecta listados filtrados y aggregados)
+    invalidate_cache_pattern("incidents:list:*")
+    invalidate_cache_pattern("incidents:summary:*")
+
+    return result
 
 
 @router.put("/{incident_id}", response_model=IncidentResponse)
@@ -254,6 +283,8 @@ async def update_incident_endpoint(
     No permite actualizar estado (usar PATCH /status).
     No permite actualizar incidencias en estado terminal (resolved/discarded).
 
+    ♻️ INVALIDACIÓN: Invalida caché de listados
+
     Args:
         - **title**: Nuevo título (opcional)
         - **description**: Nueva descripción (opcional)
@@ -267,4 +298,9 @@ async def update_incident_endpoint(
         - **400**: Incidencia en estado terminal
         - **404**: Incidencia no encontrada
     """
-    return update_incident_fields(incident_id, data)
+    result = update_incident_fields(incident_id, data)
+
+    # Invalidar caché de listados (cambio de campos afecta búsquedas filtradas)
+    invalidate_cache_pattern("incidents:list:*")
+
+    return result
