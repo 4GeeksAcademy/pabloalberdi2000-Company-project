@@ -3,10 +3,19 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .database import engine, Base
-from .routers import candidates, incidents, auth, users, profiles  # Hito 4: Nuevos routers
+from .routers import candidates, incidents, auth, users, profiles, inventory  # Inventory system
+from .database_supabase import init_db as init_inventory_db, check_db_connection
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
+
+# Initialize Supabase Inventory Database (Dual Database Architecture)
+print("🔄 Initializing Supabase Inventory Database...")
+if check_db_connection():
+    init_inventory_db()
+    print("✅ Supabase Inventory Database initialized")
+else:
+    print("⚠️  Warning: Supabase connection failed. Inventory endpoints will not work.")
 
 # Create FastAPI app
 app = FastAPI(
@@ -59,16 +68,20 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(profiles.router)
 
+# Inventory System (Dual Database Architecture: TinyDB + Supabase)
+app.include_router(inventory.router)
+
 
 @app.get("/")
 async def root():
     """Root endpoint - API health check"""
     return {
         "message": "Brasaland API",
-        "version": "2.0.0",
+        "version": "3.0.0",
         "status": "operational",
-        "features": ["ats", "incidents-crud", "auth"],
-        "docs": "/docs"
+        "features": ["ats", "incidents-crud", "auth", "inventory"],
+        "docs": "/docs",
+        "architecture": "Dual Database (TinyDB: Auth | Supabase: Inventory)"
     }
 
 

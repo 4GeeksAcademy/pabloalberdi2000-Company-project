@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     email_from: str = "onboarding@resend.dev"
     frontend_url: str = "http://localhost:3000"
 
+    # Supabase Database for Inventory (Dual Database Architecture)
+    supabase_database_url: str = "postgresql://postgres:password@localhost:5432/brasaland_inventory"
+
     class Config:
         env_file = ".env"
 
