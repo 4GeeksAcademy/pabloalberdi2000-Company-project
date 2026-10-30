@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .database import engine, Base
-from .routers import candidates, incidents, auth, users, profiles, inventory, telemetry, telemetry_report, tasks, knowledge  # Inventory + Telemetry + Async Tasks + RAG
+from .routers import candidates, incidents, auth, users, profiles, inventory, telemetry, telemetry_report, tasks, knowledge, knowledge_graph  # Inventory + Telemetry + Async Tasks + RAG + LangGraph
 from .database_supabase import init_db as init_inventory_db, check_db_connection
 from .middleware import TimingMiddleware  # Performance monitoring
 from .cache import cache  # Cache manager
@@ -86,6 +86,9 @@ app.include_router(tasks.router)
 # RAG Knowledge Base System
 app.include_router(knowledge.router)
 
+# RAG with LangGraph State Machine
+app.include_router(knowledge_graph.router)
+
 
 @app.get("/")
 async def root():
@@ -94,7 +97,7 @@ async def root():
         "message": "Brasaland API",
         "version": "3.0.0",
         "status": "operational",
-        "features": ["ats", "incidents-crud", "auth", "inventory", "telemetry", "telemetry-analytics", "async-tasks", "rag-knowledge-base"],
+        "features": ["ats", "incidents-crud", "auth", "inventory", "telemetry", "telemetry-analytics", "async-tasks", "rag-knowledge-base", "rag-langgraph-state-machine"],
         "docs": "/docs",
         "architecture": "Dual Database (TinyDB: Auth | Supabase: Inventory)"
     }
