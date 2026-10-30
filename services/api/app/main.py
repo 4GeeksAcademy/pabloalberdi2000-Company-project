@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .database import engine, Base
-from .routers import candidates, incidents, auth, users, profiles, inventory, telemetry, telemetry_report  # Inventory + Telemetry
+from .routers import candidates, incidents, auth, users, profiles, inventory, telemetry, telemetry_report, tasks  # Inventory + Telemetry + Async Tasks
 from .database_supabase import init_db as init_inventory_db, check_db_connection
 from .middleware import TimingMiddleware  # Performance monitoring
 from .cache import cache  # Cache manager
@@ -80,6 +80,9 @@ app.include_router(inventory.router)
 app.include_router(telemetry.router)
 app.include_router(telemetry_report.router)
 
+# Async Tasks System (Celery + Redis)
+app.include_router(tasks.router)
+
 
 @app.get("/")
 async def root():
@@ -88,7 +91,7 @@ async def root():
         "message": "Brasaland API",
         "version": "3.0.0",
         "status": "operational",
-        "features": ["ats", "incidents-crud", "auth", "inventory", "telemetry", "telemetry-analytics"],
+        "features": ["ats", "incidents-crud", "auth", "inventory", "telemetry", "telemetry-analytics", "async-tasks"],
         "docs": "/docs",
         "architecture": "Dual Database (TinyDB: Auth | Supabase: Inventory)"
     }

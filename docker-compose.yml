@@ -39,6 +39,11 @@ services:
 
       # Supabase (Inventory dual-DB architecture)
       - SUPABASE_DATABASE_URL=${SUPABASE_DATABASE_URL:-}
+
+      # Redis & Celery
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     volumes:
       # Hot reload para desarrollo
       - ./services/api:/app:delegated
@@ -90,6 +95,8 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001"]
@@ -100,6 +107,90 @@ services:
     labels:
       com.brasaland.service: "frontend"
       com.brasaland.description: "Next.js 15 - Backoffice"
+
+  # ============================================
+  # Redis - Message Broker & Result Backend
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: brasaland-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --maxmemory-policy noeviction --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - brasaland-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    labels:
+      com.brasaland.service: "redis"
+      com.brasaland.description: "Redis - Celery Broker & Result Backend"
+
+  # ============================================
+  # Celery Worker
+  # ============================================
+  celery-worker:
+    build:
+      context: ./services
+      dockerfile: Dockerfile
+      target: application
+    container_name: brasaland-celery-worker
+    command: celery -A app.celery_app.celery_app worker --loglevel=info --concurrency=4
+    environment:
+      # Redis connection
+      - REDIS_URL=redis://redis:6379/0
+
+      # Database (same as backend)
+      - SUPABASE_DATABASE_URL=${SUPABASE_DATABASE_URL:-}
+
+      # Celery settings
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./services/api:/app:delegated
+      - celery-data:/app/celery-data
+    networks:
+      - brasaland-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    labels:
+      com.brasaland.service: "celery-worker"
+      com.brasaland.description: "Celery Worker - Async Task Processor"
+
+  # ============================================
+  # Flower - Celery Monitoring
+  # ============================================
+  flower:
+    build:
+      context: ./services
+      dockerfile: Dockerfile
+      target: application
+    container_name: brasaland-flower
+    command: celery -A app.celery_app.celery_app flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      # Redis connection
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    networks:
+      - brasaland-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    labels:
+      com.brasaland.service: "flower"
+      com.brasaland.description: "Flower - Celery Web Monitoring UI"
 
 # ============================================
 # Networks
@@ -121,3 +212,17 @@ volumes:
     labels:
       com.brasaland.volume: "backend-persistence"
       com.brasaland.description: "TinyDB data (users, profiles, reset_tokens, incidents)"
+
+  redis-data:
+    driver: local
+    name: brasaland-redis-data
+    labels:
+      com.brasaland.volume: "redis-persistence"
+      com.brasaland.description: "Redis AOF persistence for tasks and results"
+
+  celery-data:
+    driver: local
+    name: brasaland-celery-data
+    labels:
+      com.brasaland.volume: "celery-persistence"
+      com.brasaland.description: "Celery task logs and DLQ storage"

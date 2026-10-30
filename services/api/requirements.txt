@@ -17,5 +17,10 @@ passlib[bcrypt]==1.7.4
 # Email service (Hito 6 - AUTH-03)
 resend==2.4.0
 
+# Async Tasks - Celery & Redis (Ticket #DEV-55)
+celery==5.3.4
+redis==5.0.1
+flower==2.0.1
+
 # Shared package - Transversal validations and domain logic
 -e ../../packages/shared/python
