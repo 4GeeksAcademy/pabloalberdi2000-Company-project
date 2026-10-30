@@ -1,0 +1,1187 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Brasaland Telemetry Event Schemas",
+  "description": "Definiciones completas de esquemas para todos los eventos de telemetría del monorepo Brasaland Digital Platform. Arquitecto: Claude Sonnet 4.5. Versión: 1.0.0. Fecha: 2026-10-30.",
+  "definitions": {
+    "EventEnvelope": {
+      "type": "object",
+      "description": "Estructura estándar del Event Envelope para todos los eventos",
+      "required": [
+        "eventId",
+        "timestamp",
+        "event_type",
+        "schemaVersion",
+        "requestId",
+        "properties"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Identificador único del evento (UUID v4). Generado en origen (frontend o backend). Garantiza idempotencia."
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Marca temporal en formato ISO 8601 UTC. Ejemplo: 2026-10-30T14:23:45.123Z"
+        },
+        "sessionId": {
+          "type": ["string", "null"],
+          "description": "Identificador de sesión activa en UI. Null en eventos de backend sin sesión."
+        },
+        "userId": {
+          "type": ["string", "null"],
+          "format": "uuid",
+          "description": "UUID del usuario autenticado (referencia a TinyDB users). Null en flujos anónimos."
+        },
+        "event_type": {
+          "type": "string",
+          "pattern": "^[a-z_]+$",
+          "description": "Taxonomía entidad_acción. Ejemplo: stock_threshold_triggered, inbound_order_created"
+        },
+        "schemaVersion": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "description": "Versión semántica del schema del evento. Ejemplo: 1.0.0"
+        },
+        "requestId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Identificador de correlación para tracing distribuido. Frontend: generado por request. Backend: heredado de header X-Request-ID."
+        },
+        "properties": {
+          "type": "object",
+          "description": "Payload específico del evento. Estructura definida por schema individual con allowlist estricto."
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "WarehouseEnum": {
+      "type": "string",
+      "enum": [
+        "medellin_centro",
+        "medellin_poblado",
+        "medellin_envigado",
+        "bogota_zona_rosa",
+        "bogota_usaquen",
+        "bogota_suba",
+        "cali_norte",
+        "cali_sur",
+        "cartagena_centro",
+        "barranquilla_norte",
+        "miami_beach",
+        "miami_downtown",
+        "orlando_international",
+        "tampa_centro",
+        "central_warehouse"
+      ],
+      "description": "Almacenes/sedes de Brasaland (10 Colombia + 4 Florida + 1 central)"
+    },
+
+    "MeasurementUnitEnum": {
+      "type": "string",
+      "enum": ["kg", "g", "l", "ml", "unit", "package"],
+      "description": "Unidades de medida para ingredientes"
+    },
+
+    "ThresholdSeverityEnum": {
+      "type": "string",
+      "enum": ["critical", "warning", "low"],
+      "description": "Severidad de umbral de stock. critical: <20% min, warning: 20-50%, low: 50-100%"
+    },
+
+    "HttpMethodEnum": {
+      "type": "string",
+      "enum": ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS", "HEAD"],
+      "description": "Métodos HTTP"
+    },
+
+    "ErrorTypeEnum": {
+      "type": "string",
+      "enum": ["client_error_4xx", "server_error_5xx"],
+      "description": "Tipo de error HTTP"
+    }
+  },
+
+  "events": {
+    "direct_stock_edit_rejected": {
+      "schemaVersion": "1.0.0",
+      "description": "Captura intentos de modificación directa de stock (bypassing flujo de órdenes inbound/outbound)",
+      "businessHypothesis": "Detectar usuarios que no comprenden el modelo de negocio o intentan fraude interno",
+      "businessDecision": "Disparar entrenamiento adicional a usuarios con >3 rechazos en 7 días, auditoría de seguridad si >10 rechazos",
+      "classification": "obligatorio",
+      "category": "inventario",
+      "pipeline": "stream",
+      "samplingRate": 1.0,
+      "properties": {
+        "type": "object",
+        "required": [
+          "ingredient_id",
+          "ingredient_name",
+          "warehouse",
+          "attempted_quantity",
+          "current_stock",
+          "rejection_reason",
+          "user_role"
+        ],
+        "properties": {
+          "ingredient_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "ID del ingrediente (FK a ingredients.id)"
+          },
+          "ingredient_name": {
+            "type": "string",
+            "maxLength": 255,
+            "description": "Nombre del ingrediente para contexto humano"
+          },
+          "warehouse": {
+            "$ref": "#/definitions/WarehouseEnum"
+          },
+          "attempted_quantity": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Cantidad que intentó establecer directamente"
+          },
+          "current_stock": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Stock actual calculado (SUM(inbound) - SUM(outbound))"
+          },
+          "rejection_reason": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Razón del rechazo. Ejemplo: 'Direct stock edits not allowed. Use inbound/outbound orders.'"
+          },
+          "user_role": {
+            "type": "string",
+            "enum": ["admin", "operator", "viewer"],
+            "description": "Rol del usuario en el sistema"
+          }
+        },
+        "additionalProperties": false
+      },
+      "piiFields": [],
+      "retentionPolicy": {
+        "hotStorage": "90 days",
+        "coldStorage": "2 years"
+      }
+    },
+
+    "outbound_stock_insufficient": {
+      "schemaVersion": "1.0.0",
+      "description": "Validación fallida de orden de salida por stock insuficiente",
+      "businessHypothesis": "Identificar desajustes entre stock registrado y stock físico real (mermas no reportadas, errores de registro)",
+      "businessDecision": "Enviar alerta al supervisor del almacén para auditoría física, investigar últimas 10 órdenes del ingrediente",
+      "classification": "obligatorio",
+      "category": "inventario",
+      "pipeline": "stream",
+      "samplingRate": 1.0,
+      "properties": {
+        "type": "object",
+        "required": [
+          "ingredient_id",
+          "ingredient_name",
+          "warehouse",
+          "requested_quantity",
+          "available_stock",
+          "deficit"
+        ],
+        "properties": {
+          "ingredient_id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "ingredient_name": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "warehouse": {
+            "$ref": "#/definitions/WarehouseEnum"
+          },
+          "requested_quantity": {
+            "type": "number",
+            "minimum": 0.01,
+            "description": "Cantidad solicitada en orden outbound"
+          },
+          "available_stock": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Stock disponible actual"
+          },
+          "deficit": {
+            "type": "number",
+            "minimum": 0.01,
+            "description": "requested_quantity - available_stock"
+          },
+          "last_inbound_order_date": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "Fecha de última entrada (para detectar desajustes temporales)"
+          }
+        },
+        "additionalProperties": false
+      },
+      "piiFields": [],
+      "retentionPolicy": {
+        "hotStorage": "90 days",
+        "coldStorage": "2 years"
+      }
+    },
+
+    "stock_threshold_triggered": {
+      "schemaVersion": "1.0.0",
+      "description": "Stock de ingrediente cruza umbral mínimo (current_stock < min_stock)",
+      "businessHypothesis": "Alertar proactivamente antes de desabasto para generar órdenes de compra automáticas",
+      "businessDecision": "Notificación push a área de Compras (Lucía Fernández), generación automática de borrador de orden de compra",
+      "classification": "obligatorio",
+      "category": "inventario",
+      "pipeline": "stream",
+      "samplingRate": 1.0,
+      "properties": {
+        "type": "object",
+        "required": [
+          "ingredient_id",
+          "ingredient_name",
+          "warehouse",
+          "current_stock",
+          "min_stock",
+          "threshold_severity"
+        ],
+        "properties": {
+          "ingredient_id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "ingredient_name": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "warehouse": {
+            "$ref": "#/definitions/WarehouseEnum"
+          },
+          "current_stock": {
+            "type": "number",
+            "minimum": 0
+          },
+          "min_stock": {
+            "type": "number",
+            "minimum": 0
+          },
+          "reorder_point": {
+            "type": ["number", "null"],
+            "minimum": 0,
+            "description": "Punto de reorden configurado (si existe)"
+          },
+          "threshold_severity": {
+            "$ref": "#/definitions/ThresholdSeverityEnum"
+          }
+        },
+        "additionalProperties": false
+      },
+      "piiFields": [],
+      "retentionPolicy": {
+        "hotStorage": "90 days",
+        "coldStorage": "2 years"
+      }
+    },
+
+    "stock_calculation_latency": {
+      "schemaVersion": "1.0.0",
+      "description": "Medición de performance de cálculo de stock (SUM(inbound) - SUM(outbound))",
+      "businessHypothesis": "Monitorear operación más costosa del sistema para optimizar queries SQL antes de que afecte UX",
+      "businessDecision": "Si latencia p95 > 500ms durante 1 hora, activar investigación de query optimization o considerar caché",
+      "classification": "oportunidad",
+      "category": "performance",
+      "pipeline": "batch",
+      "samplingRate": 0.25,
+      "properties": {
+        "type": "object",
+        "required": [
+          "ingredient_id",
+          "duration_ms",
+          "inbound_count",
+          "outbound_count",
+          "query_type"
+        ],
+        "properties": {
+          "ingredient_id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "warehouse": {
+            "anyOf": [
+              {"$ref": "#/definitions/WarehouseEnum"},
+              {"type": "null"}
+            ],
+            "description": "Almacén específico (si filtrado) o null para global"
+          },
+          "duration_ms": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Tiempo de cálculo en milisegundos"
+          },
+          "inbound_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Número de registros en inbound_orders sumados"
+          },
+          "outbound_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Número de registros en outbound_orders sumados"
+          },
+          "query_type": {
+            "type": "string",
+            "enum": ["single_ingredient", "list_all", "filtered_by_warehouse"],
+            "description": "Tipo de query ejecutada"
+          }
+        },
+        "additionalProperties": false
+      },
+      "piiFields": [],
+      "retentionPolicy": {
+        "hotStorage": "14 days",
+        "coldStorage": "6 months"
+      }
+    },
+
+    "inbound_order_created": {
+      "schemaVersion": "1.0.0",
+      "description": "Orden de entrada de stock registrada exitosamente",
+      "businessHypothesis": "Rastrear flujo completo de materia prima para construir modelo predictivo de demanda",
+      "businessDecision": "Alimentar sistema de predicción de demanda, generar recomendaciones de compra semanales",
+      "classification": "obligatorio",
+      "category": "inventario",
+      "pipeline": "batch",
+      "samplingRate": 1.0,
+      "properties": {
+        "type": "object",
+        "required": [
+          "order_id",
+          "ingredient_id",
+          "ingredient_name",
+          "quantity",
+          "unit",
+          "warehouse"
+        ],
+        "properties": {
+          "order_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "ID de la orden (inbound_orders.id)"
+          },
+          "ingredient_id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "ingredient_name": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 0.01
+          },
+          "unit": {
+            "$ref": "#/definitions/MeasurementUnitEnum"
+          },
+          "warehouse": {
+            "$ref": "#/definitions/WarehouseEnum"
+          },
+          "notes": {
+            "type": ["string", "null"],
+            "maxLength": 500,
+            "description": "Notas del usuario. SANITIZAR: Remover nombres propios, teléfonos, emails con regex."
+          }
+        },
+        "additionalProperties": false
+      },
+      "piiFields": ["notes"],
+      "piiTreatment": "notes debe sanitizarse con regex para detectar patrones de email/teléfono/nombres y reemplazar con [REDACTED]",
+      "retentionPolicy": {
+        "hotStorage": "30 days",
+        "coldStorage": "1 year"
+      }
+    },
+
+    "outbound_order_created": {
+      "schemaVersion": "1.0.0",
+      "description": "Orden de salida de stock registrada exitosamente",
+      "businessHypothesis": "Rastrear consumo de materia prima para predicción de demanda y optimización de niveles de inventario",
+      "businessDecision": "Alimentar modelo de ML para predicción de demanda con 85%+ precisión",
+      "classification": "obligatorio",
+      "category": "inventario",
+      "pipeline": "batch",
+      "samplingRate": 1.0,
+      "properties": {
+        "type": "object",
+        "required": [
+          "order_id",
+          "ingredient_id",
+          "ingredient_name",
+          "quantity",
+          "unit",
+          "warehouse",
+          "remaining_stock"
+        ],
+        "properties": {
+          "order_id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "ingredient_id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "ingredient_name": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 0.01
+          },
+          "unit": {
+            "$ref": "#/definitions/MeasurementUnitEnum"
+          },
+          "warehouse": {
+            "$ref": "#/definitions/WarehouseEnum"
+          },
+          "reason": {
+            "type": ["string", "null"],
+            "maxLength": 500,
+            "description": "Razón de salida (cocina, merma, etc.). SANITIZAR: Similar a notes en inbound."
+          },
+          "remaining_stock": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Stock calculado post-operación"
+          }
+        },
+        "additionalProperties": false
+      },
+      "piiFields": ["reason"],
+      "piiTreatment": "reason debe sanitizarse con regex para detectar información personal",
+      "retentionPolicy": {
+        "hotStorage": "30 days",
+        "coldStorage": "1 year"
+      }
+    },
+
+    "ingredient_viewed_critical_stock": {
+      "schemaVersion": "1.0.0",
+      "description": "Usuario visualiza ingrediente con stock por debajo del umbral",
+      "businessHypothesis": "Confirmar que operadores están viendo alertas de stock bajo para medir efectividad de notificaciones",
+      "businessDecision": "Escalar alerta a supervisor si ingrediente crítico no es visualizado en 24h",
+      "classification": "oportunidad",
+      "category": "ux",
+      "pipeline": "batch",
+      "samplingRate": 1.0,
+      "properties": {
+        "type": "object",
+        "required": [
+          "ingredient_id",
+          "ingredient_name",
+          "current_stock",
+          "min_stock",
+          "page_url",
+          "time_since_alert"
+        ],
+        "properties": {
+          "ingredient_id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "ingredient_name": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "current_stock": {
+            "type": "number",
+            "minimum": 0
+          },
+          "min_stock": {
+            "type": "number",
+            "minimum": 0
+          },
+          "page_url": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Ruta de la página (ej. /inventory/ingredients)"
+          },
+          "time_since_alert": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Segundos desde que se disparó stock_threshold_triggered"
+          }
+        },
+        "additionalProperties": false
+      },
+      "piiFields": [],
+      "retentionPolicy": {
+        "hotStorage": "30 days",
+        "coldStorage": "6 months"
+      }
+    },
+
+    "login_attempt_failed": {
+      "schemaVersion": "1.0.0",
+      "description": "Intento fallido de autenticación (credenciales incorrectas)",
+      "businessHypothesis": "Detectar ataques de fuerza bruta o credenciales comprometidas",
+      "businessDecision": "Implementar rate limiting temporal (5 min lockout), notificar al usuario si >3 intentos desde IP desconocida",
+      "classification": "obligatorio",
+      "category": "seguridad",
+      "pipeline": "stream",
+      "samplingRate": 1.0,
+      "properties": {
+        "type": "object",
+        "required": [
+          "email_hash",
+          "failure_reason",
+          "ip_address_masked",
+          "user_agent",
+          "attempt_count_last_hour"
+        ],
+        "properties": {
+          "email_hash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "Email hasheado con SHA256 para evitar exposición. NUNCA email en claro."
+          },
+          "failure_reason": {
+            "type": "string",
+            "enum": ["invalid_credentials", "account_locked", "account_not_found"],
+            "description": "Razón del fallo de autenticación"
+          },
+          "ip_address_masked": {
+            "type": "string",
+            "pattern": "^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.0$",
+            "description": "IP del cliente con último octeto enmascarado (ej. 192.168.1.0). GDPR compliance."
+          },
+          "user_agent": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "User-Agent del navegador (detección de bots)"
+          },
+          "attempt_count_last_hour": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Conteo de intentos fallidos del mismo email en última hora"
+          }
+        },
+        "additionalProperties": false
+      },
+      "piiFields": ["email_hash", "ip_address_masked"],
+      "piiTreatment": "Email: SHA256 hash con salt único. IP: Último octeto enmascarado (192.168.1.XXX → 192.168.1.0)",
+      "retentionPolicy": {
+        "hotStorage": "90 days",
+        "coldStorage": "2 years"
+      }
+    },
+
+    "session_expired": {
+      "schemaVersion": "1.0.0",
+      "description": "Sesión JWT expiró (TTL agotado)",
+      "businessHypothesis": "Entender si TTL de sesión (default 15-30min) es adecuado para flujos de trabajo reales",
+      "businessDecision": "Si tasa de expiración activa >30%, extender TTL a 45min con refresh automático",
+      "classification": "oportunidad",
+      "category": "seguridad",
+      "pipeline": "batch",
+      "samplingRate": 1.0,
+      "properties": {
+        "type": "object",
+        "required": [
+          "session_duration_seconds",
+          "last_activity_seconds_ago",
+          "page_at_expiration",
+          "was_active"
+        ],
+        "properties": {
+          "session_duration_seconds": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Tiempo total de sesión (desde login hasta expiración)"
+          },
+          "last_activity_seconds_ago": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Segundos desde última interacción del usuario"
+          },
+          "page_at_expiration": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Ruta donde estaba el usuario (ej. /inventory/orders/outbound)"
+          },
+          "was_active": {
+            "type": "boolean",
+            "description": "true si usuario hizo click <1 min antes de expiración"
+          }
+        },
+        "additionalProperties": false
+      },
+      "piiFields": [],
+      "retentionPolicy": {
+        "hotStorage": "30 days",
+        "coldStorage": "1 year"
+      }
+    },
+
+    "password_reset_requested": {
+      "schemaVersion": "1.0.0",
+      "description": "Usuario solicitó reset de contraseña",
+      "businessHypothesis": "Detectar picos anómalos de resets (posible phishing masivo)",
+      "businessDecision": "Notificación al CTO (Nicolás Park) si pico >3σ de media histórica",
+      "classification": "oportunidad",
+      "category": "seguridad",
+      "pipeline": "stream",
+      "samplingRate": 1.0,
+      "properties": {
+        "type": "object",
+        "required": [
+          "email_hash",
+          "ip_address_masked",
+          "reset_token_sent",
+          "account_exists"
+        ],
+        "properties": {
+          "email_hash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "ip_address_masked": {
+            "type": "string",
+            "pattern": "^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.0$"
+          },
+          "reset_token_sent": {
+            "type": "boolean",
+            "description": "true si email fue enviado exitosamente"
+          },
+          "account_exists": {
+            "type": "boolean",
+            "description": "true si cuenta existe (para detectar fishing de cuentas)"
+          }
+        },
+        "additionalProperties": false
+      },
+      "piiFields": ["email_hash", "ip_address_masked"],
+      "piiTreatment": "Email: SHA256 hash. IP: Último octeto enmascarado",
+      "retentionPolicy": {
+        "hotStorage": "90 days",
+        "coldStorage": "2 years"
+      }
+    },
+
+    "api_latency_recorded": {
+      "schemaVersion": "1.0.0",
+      "description": "Medición de latencia de endpoint de API",
+      "businessHypothesis": "Monitorear degradación de performance en tiempo real para identificar endpoints lentos",
+      "businessDecision": "Alerta a tecnología si p95 >200ms para endpoints con caché, >500ms para endpoints sin caché",
+      "classification": "obligatorio",
+      "category": "performance",
+      "pipeline": "batch",
+      "samplingRate": 0.2,
+      "properties": {
+        "type": "object",
+        "required": [
+          "endpoint",
+          "method",
+          "duration_ms",
+          "status_code"
+        ],
+        "properties": {
+          "endpoint": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Path del endpoint (ej. /inventory/ingredients)"
+          },
+          "method": {
+            "$ref": "#/definitions/HttpMethodEnum"
+          },
+          "duration_ms": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Latencia total (request → response)"
+          },
+          "status_code": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 599,
+            "description": "HTTP status code"
+          },
+          "cache_hit": {
+            "type": ["boolean", "null"],
+            "description": "true si fue servido desde caché"
+          },
+          "db_query_time_ms": {
+            "type": ["number", "null"],
+            "minimum": 0,
+            "description": "Tiempo de query a BD (si aplica)"
+          }
+        },
+        "additionalProperties": false
+      },
+      "piiFields": [],
+      "retentionPolicy": {
+        "hotStorage": "14 days",
+        "coldStorage": "6 months"
+      }
+    },
+
+    "database_query_slow": {
+      "schemaVersion": "1.0.0",
+      "description": "Query a base de datos excede umbral de latencia (>1 segundo)",
+      "businessHypothesis": "Identificar queries N+1 o missing indexes para optimizar esquema de BD",
+      "businessDecision": "Logging de query SQL + explain plan, revisión semanal de queries lentas",
+      "classification": "oportunidad",
+      "category": "performance",
+      "pipeline": "batch",
+      "samplingRate": 1.0,
+      "properties": {
+        "type": "object",
+        "required": [
+          "query_hash",
+          "duration_ms",
+          "table_name",
+          "operation_type"
+        ],
+        "properties": {
+          "query_hash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$",
+            "description": "Hash MD5 del SQL query (sin parámetros) para agrupación"
+          },
+          "duration_ms": {
+            "type": "number",
+            "minimum": 1000,
+            "description": "Tiempo de ejecución (umbral mínimo 1000ms)"
+          },
+          "table_name": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "Tabla principal afectada"
+          },
+          "operation_type": {
+            "type": "string",
+            "enum": ["SELECT", "INSERT", "UPDATE", "DELETE"],
+            "description": "Tipo de operación SQL"
+          },
+          "rows_examined": {
+            "type": ["integer", "null"],
+            "minimum": 0,
+            "description": "Número de filas examinadas (de EXPLAIN)"
+          },
+          "rows_returned": {
+            "type": ["integer", "null"],
+            "minimum": 0,
+            "description": "Número de filas retornadas"
+          }
+        },
+        "additionalProperties": false
+      },
+      "piiFields": [],
+      "retentionPolicy": {
+        "hotStorage": "14 days",
+        "coldStorage": "6 months"
+      }
+    },
+
+    "cache_hit_rate_measured": {
+      "schemaVersion": "1.0.0",
+      "description": "Medición periódica (cada 5min) de hit rate de caché",
+      "businessHypothesis": "Validar efectividad de estrategia de caching para ajustar TTLs o identificar bugs",
+      "businessDecision": "Si hit rate <50% durante 48h, revisar TTLs y patrones de invalidación",
+      "classification": "oportunidad",
+      "category": "performance",
+      "pipeline": "batch",
+      "samplingRate": 1.0,
+      "properties": {
+        "type": "object",
+        "required": [
+          "cache_type",
+          "key_prefix",
+          "hits",
+          "misses",
+          "hit_rate_percent",
+          "ttl_seconds"
+        ],
+        "properties": {
+          "cache_type": {
+            "type": "string",
+            "enum": ["in_memory_backend", "browser_localstorage"],
+            "description": "Tipo de caché"
+          },
+          "key_prefix": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "Prefijo de claves (ej. incidents:list, ingredients:stock)"
+          },
+          "hits": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Número de cache hits en ventana de medición"
+          },
+          "misses": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Número de cache misses"
+          },
+          "hit_rate_percent": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "(hits / (hits + misses)) * 100"
+          },
+          "ttl_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "TTL configurado en segundos"
+          }
+        },
+        "additionalProperties": false
+      },
+      "piiFields": [],
+      "retentionPolicy": {
+        "hotStorage": "14 days",
+        "coldStorage": "6 months"
+      }
+    },
+
+    "frontend_error_uncaught": {
+      "schemaVersion": "1.0.0",
+      "description": "Error no capturado en JavaScript (window.onerror, React ErrorBoundary)",
+      "businessHypothesis": "Detectar bugs en producción que QA no identificó para priorizar fixes",
+      "businessDecision": "Crear ticket automático en issue tracker si mismo error ocurre >10 veces/hora",
+      "classification": "obligatorio",
+      "category": "reliability",
+      "pipeline": "stream",
+      "samplingRate": 1.0,
+      "properties": {
+        "type": "object",
+        "required": [
+          "error_message",
+          "page_url",
+          "browser",
+          "browser_version"
+        ],
+        "properties": {
+          "error_message": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Mensaje de error (truncado a 500 chars)"
+          },
+          "error_stack": {
+            "type": ["string", "null"],
+            "maxLength": 2000,
+            "description": "Stack trace (max 2000 chars). SANITIZAR: Remover paths absolutos locales."
+          },
+          "component_name": {
+            "type": ["string", "null"],
+            "maxLength": 200,
+            "description": "Componente React donde ocurrió (si disponible)"
+          },
+          "page_url": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Ruta de la página"
+          },
+          "browser": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "Navegador (de user-agent)"
+          },
+          "browser_version": {
+            "type": "string",
+            "maxLength": 50,
+            "description": "Versión del navegador"
+          }
+        },
+        "additionalProperties": false
+      },
+      "piiFields": ["error_stack"],
+      "piiTreatment": "Stack trace debe sanitizarse con regex para remover paths locales del desarrollador (/Users/..., C:\\Users\\...)",
+      "retentionPolicy": {
+        "hotStorage": "30 days",
+        "coldStorage": "1 year"
+      }
+    },
+
+    "api_request_failed": {
+      "schemaVersion": "1.0.0",
+      "description": "Request de API falló con error 4xx o 5xx",
+      "businessHypothesis": "Distinguir entre errores de cliente (4xx) y servidor (5xx) para priorizar investigación",
+      "businessDecision": "Rollback automático si tasa de 5xx >5% durante 5 minutos post-deploy",
+      "classification": "obligatorio",
+      "category": "reliability",
+      "pipeline": "stream",
+      "samplingRate": 1.0,
+      "properties": {
+        "type": "object",
+        "required": [
+          "endpoint",
+          "method",
+          "status_code",
+          "error_type",
+          "duration_ms"
+        ],
+        "properties": {
+          "endpoint": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "method": {
+            "$ref": "#/definitions/HttpMethodEnum"
+          },
+          "status_code": {
+            "type": "integer",
+            "minimum": 400,
+            "maximum": 599,
+            "description": "HTTP status code (400-599)"
+          },
+          "error_type": {
+            "$ref": "#/definitions/ErrorTypeEnum"
+          },
+          "error_detail": {
+            "type": ["string", "null"],
+            "maxLength": 200,
+            "description": "Mensaje de error del servidor (truncado)"
+          },
+          "duration_ms": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Latencia antes del error"
+          }
+        },
+        "additionalProperties": false
+      },
+      "piiFields": [],
+      "retentionPolicy": {
+        "hotStorage": "30 days",
+        "coldStorage": "1 year"
+      }
+    },
+
+    "network_request_timeout": {
+      "schemaVersion": "1.0.0",
+      "description": "Request de frontend a API excede timeout (default 30s)",
+      "businessHypothesis": "Detectar problemas de conectividad entre frontend y API (red, CDN, backend overwhelmed)",
+      "businessDecision": "Si timeouts concentrados en región geográfica, investigar CDN edge server",
+      "classification": "oportunidad",
+      "category": "network",
+      "pipeline": "batch",
+      "samplingRate": 1.0,
+      "properties": {
+        "type": "object",
+        "required": [
+          "endpoint",
+          "method",
+          "timeout_ms",
+          "elapsed_ms"
+        ],
+        "properties": {
+          "endpoint": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "method": {
+            "$ref": "#/definitions/HttpMethodEnum"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1000,
+            "description": "Timeout configurado (default 30000ms)"
+          },
+          "elapsed_ms": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Tiempo transcurrido antes de timeout"
+          },
+          "network_type": {
+            "type": ["string", "null"],
+            "enum": ["4g", "3g", "2g", "wifi", "ethernet", "unknown", null],
+            "description": "Tipo de red (de navigator.connection)"
+          }
+        },
+        "additionalProperties": false
+      },
+      "piiFields": [],
+      "retentionPolicy": {
+        "hotStorage": "30 days",
+        "coldStorage": "6 months"
+      }
+    },
+
+    "page_view": {
+      "schemaVersion": "1.0.0",
+      "description": "Usuario navega a una página del backoffice",
+      "businessHypothesis": "Identificar secciones del backoffice más usadas para priorizar optimizaciones de performance y UX",
+      "businessDecision": "Optimizar (caché, lazy loading) páginas que representan >50% del tráfico",
+      "classification": "oportunidad",
+      "category": "analytics",
+      "pipeline": "batch",
+      "samplingRate": 0.1,
+      "properties": {
+        "type": "object",
+        "required": [
+          "page_url",
+          "page_title"
+        ],
+        "properties": {
+          "page_url": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Ruta de la página (ej. /inventory/ingredients)"
+          },
+          "page_title": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Título de la página"
+          },
+          "referrer_url": {
+            "type": ["string", "null"],
+            "maxLength": 500,
+            "description": "Página previa (si aplica)"
+          },
+          "load_time_ms": {
+            "type": ["number", "null"],
+            "minimum": 0,
+            "description": "Tiempo de carga (DOMContentLoaded)"
+          }
+        },
+        "additionalProperties": false
+      },
+      "piiFields": [],
+      "retentionPolicy": {
+        "hotStorage": "30 days",
+        "coldStorage": "1 year"
+      }
+    },
+
+    "form_submission_abandoned": {
+      "schemaVersion": "1.0.0",
+      "description": "Usuario abandona formulario sin completar",
+      "businessHypothesis": "Identificar fricciones en formularios de órdenes para simplificar campos obligatorios o mejorar validaciones",
+      "businessDecision": "A/B testing de formulario simplificado si abandono >30%",
+      "classification": "oportunidad",
+      "category": "ux",
+      "pipeline": "batch",
+      "samplingRate": 1.0,
+      "properties": {
+        "type": "object",
+        "required": [
+          "form_name",
+          "page_url",
+          "fields_completed",
+          "total_fields",
+          "time_spent_seconds"
+        ],
+        "properties": {
+          "form_name": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "Identificador del formulario (ej. outbound_order_form)"
+          },
+          "page_url": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "fields_completed": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Número de campos completados"
+          },
+          "total_fields": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Número total de campos"
+          },
+          "time_spent_seconds": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Tiempo pasado en el formulario antes de abandonar"
+          },
+          "last_field_interacted": {
+            "type": ["string", "null"],
+            "maxLength": 100,
+            "description": "Último campo tocado (para identificar fricciones)"
+          }
+        },
+        "additionalProperties": false
+      },
+      "piiFields": [],
+      "retentionPolicy": {
+        "hotStorage": "30 days",
+        "coldStorage": "6 months"
+      }
+    },
+
+    "search_query_zero_results": {
+      "schemaVersion": "1.0.0",
+      "description": "Búsqueda de ingredientes no retorna resultados",
+      "businessHypothesis": "Mejorar búsqueda de ingredientes (fuzzy matching, sinónimos) para reducir frustración de usuarios",
+      "businessDecision": "Si >10% de searches dan 0 resultados, implementar fuzzy matching o sugerir términos similares",
+      "classification": "oportunidad",
+      "category": "ux",
+      "pipeline": "batch",
+      "samplingRate": 1.0,
+      "properties": {
+        "type": "object",
+        "required": [
+          "query_text",
+          "search_scope"
+        ],
+        "properties": {
+          "query_text": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "Texto buscado (max 100 chars)"
+          },
+          "search_scope": {
+            "type": "string",
+            "enum": ["ingredients", "orders", "global"],
+            "description": "Ámbito de búsqueda"
+          },
+          "filters_applied": {
+            "type": ["object", "null"],
+            "description": "Filtros activos (ej. {\"warehouse\": \"medellin_centro\"})"
+          }
+        },
+        "additionalProperties": false
+      },
+      "piiFields": [],
+      "retentionPolicy": {
+        "hotStorage": "30 days",
+        "coldStorage": "6 months"
+      }
+    }
+  },
+
+  "metadata": {
+    "totalEvents": 19,
+    "obligatorios": 9,
+    "oportunidades": 10,
+    "categories": {
+      "inventario": 7,
+      "seguridad": 3,
+      "performance": 3,
+      "reliability": 2,
+      "ux": 3,
+      "network": 1
+    },
+    "pipelineDistribution": {
+      "stream": 7,
+      "batch": 12
+    },
+    "generatedBy": "Claude Sonnet 4.5 (Lead Data Architect & Distributed Systems Engineer)",
+    "generatedDate": "2026-10-30",
+    "version": "1.0.0",
+    "relatedDocuments": [
+      "TELEMETRY_PLAN.md",
+      "CACHING_REPORT.md",
+      "CACHING_AUDIT_REPORT.md",
+      "projectbrief.md",
+      "CONTEXT.md"
+    ]
+  }
+}
