@@ -34,6 +34,10 @@ class RFPTicketStatus(str, Enum):
     NEEDS_HUMAN_REVIEW = "needs_human_review"        # Requiere revisión manual
     LISTO_PARA_CONSOLIDACION = "listo_para_consolidacion"  # Handoff a Parte 3
 
+    # Parte 3: Aprobación y Consolidación
+    ESPERANDO_APROBACION = "esperando_aprobacion"    # HITL por departamento
+    TERMINADO = "terminado"                          # Documento final generado
+
 
 class DepartmentType(str, Enum):
     """
