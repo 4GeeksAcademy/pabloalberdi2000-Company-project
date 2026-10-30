@@ -18,6 +18,9 @@ python-docx==1.1.0                # DOCX processing
 langgraph==0.0.20                 # State machine for RAG workflow
 langchain-core==0.1.16            # Core abstractions for LangChain
 
+# HTTP Client for Tools
+httpx==0.25.2                     # Async HTTP client with timeout support
+
 # Utilities
 python-dotenv==1.0.0              # Environment variables
 pydantic==2.5.3                   # Already in main requirements but version pinned here
