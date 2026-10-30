@@ -14,6 +14,7 @@ CRÍTICO:
 
 import os
 import shutil
+import asyncio
 from pathlib import Path
 from typing import List, Dict, Any
 from datetime import datetime
@@ -32,6 +33,7 @@ from services.models.rfp import (
 )
 from data.pipelines.rfp_intake.ingest import process_rfp_document
 from data.pipelines.rfp_intake.graph import execute_rfp_pipeline
+from services.notifications import connection_manager, RFPTicketEvent
 
 # Router
 router = APIRouter(prefix="/rfp", tags=["RFP Intake"])
@@ -217,6 +219,20 @@ async def upload_rfp(
         db.refresh(ticket)
 
         print(f"✅ Ticket creado: {ticket.id}")
+
+        # 🔔 PUBLICAR EVENTO SSE: Notificar creación de ticket
+        event = RFPTicketEvent(
+            event_type="rfp_ticket_created",
+            ticket_id=ticket.id,
+            status=ticket.status.value,
+            filename=ticket.filename,
+            client_name=None,  # Se actualiza cuando se extraiga metadata
+            created_at=ticket.created_at.isoformat()
+        )
+
+        # Publicar a todos los clientes SSE conectados
+        asyncio.create_task(connection_manager.publish(event))
+        print(f"🔔 Evento SSE publicado: rfp_ticket_created (ticket {ticket.id})")
 
     except Exception as e:
         # Limpiar archivo si falla la creación del ticket

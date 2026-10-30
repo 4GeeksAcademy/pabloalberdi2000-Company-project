@@ -1,0 +1,485 @@
+/**
+ * Estilos - Brasaland Incident Notifications
+ *
+ * DOMINIO: Sistema de Análisis de Incidencias Postventa
+ * Paleta: Alineada con Brasaland (cocina a la brasa)
+ * Tema: Light + Dark modes
+ */
+
+/* ============================================================
+   CONTAINER
+   ============================================================ */
+
+.incident-notifications {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-primary, #ffffff);
+  color: var(--text-primary, #1a1a1a);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  .incident-notifications {
+    background: var(--bg-primary, #1a1a1a);
+    color: var(--text-primary, #f5f5f5);
+  }
+}
+
+/* ============================================================
+   HEADER
+   ============================================================ */
+
+.incident-notifications__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border-color, #e5e5e5);
+  background: var(--bg-secondary, #f9f9f9);
+}
+
+@media (prefers-color-scheme: dark) {
+  .incident-notifications__header {
+    border-bottom-color: var(--border-color, #333);
+    background: var(--bg-secondary, #2a2a2a);
+  }
+}
+
+.incident-notifications__title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.incident-notifications__title h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+/* ============================================================
+   FILTROS
+   ============================================================ */
+
+.incident-notifications__filters {
+  display: flex;
+  gap: 0.5rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border-color, #e5e5e5);
+}
+
+@media (prefers-color-scheme: dark) {
+  .incident-notifications__filters {
+    border-bottom-color: var(--border-color, #333);
+  }
+}
+
+.filter-btn {
+  padding: 0.5rem 1rem;
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-color, #d1d5db);
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.filter-btn:hover {
+  background: var(--bg-hover, #f3f4f6);
+  border-color: var(--border-hover, #9ca3af);
+}
+
+.filter-btn.active {
+  background: #d97706;
+  color: #ffffff;
+  border-color: #d97706;
+}
+
+@media (prefers-color-scheme: dark) {
+  .filter-btn {
+    background: var(--bg-card, #2a2a2a);
+    border-color: var(--border-color, #404040);
+    color: var(--text-primary, #f3f4f6);
+  }
+
+  .filter-btn:hover {
+    background: var(--bg-hover, #374151);
+  }
+
+  .filter-btn.active {
+    background: #f59e0b;
+    color: #1a1a1a;
+    border-color: #f59e0b;
+  }
+}
+
+/* ============================================================
+   BADGES
+   ============================================================ */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.badge--unread {
+  background: #d97706;
+  color: #ffffff;
+}
+
+.badge--unread:hover {
+  background: #b45309;
+}
+
+.badge--new {
+  background: #10b981;
+  color: #ffffff;
+  margin-left: 0.5rem;
+  cursor: default;
+}
+
+/* ============================================================
+   STATUS INDICATORS
+   ============================================================ */
+
+.incident-notifications__status {
+  display: flex;
+  align-items: center;
+}
+
+.status {
+  font-size: 0.875rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+.status--connected {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+@media (prefers-color-scheme: dark) {
+  .status--connected {
+    background: #064e3b;
+    color: #6ee7b7;
+  }
+}
+
+.status--reconnecting {
+  background: #fef3c7;
+  color: #92400e;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@media (prefers-color-scheme: dark) {
+  .status--reconnecting {
+    background: #78350f;
+    color: #fde68a;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* ============================================================
+   ERROR BANNER
+   ============================================================ */
+
+.incident-notifications__error {
+  padding: 0.875rem 1.5rem;
+  background: #fee2e2;
+  color: #991b1b;
+  border-left: 4px solid #dc2626;
+  font-size: 0.875rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .incident-notifications__error {
+    background: #7f1d1d;
+    color: #fecaca;
+    border-left-color: #ef4444;
+  }
+}
+
+/* ============================================================
+   LISTA DE INCIDENCIAS
+   ============================================================ */
+
+.incident-notifications__list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+}
+
+.incident-notifications__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-secondary, #6b7280);
+}
+
+.text-muted {
+  font-size: 0.875rem;
+  color: var(--text-muted, #9ca3af);
+}
+
+/* ============================================================
+   INCIDENT ITEM
+   ============================================================ */
+
+.incident-item {
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-color, #e5e5e5);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.incident-item:hover {
+  border-color: var(--border-hover, #d97706);
+  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  .incident-item {
+    background: var(--bg-card, #2a2a2a);
+    border-color: var(--border-color, #404040);
+  }
+
+  .incident-item:hover {
+    border-color: var(--border-hover, #f59e0b);
+    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.15);
+  }
+}
+
+.incident-item--unread {
+  border-left: 4px solid #d97706;
+  background: var(--bg-unread, #fffbeb);
+}
+
+@media (prefers-color-scheme: dark) {
+  .incident-item--unread {
+    border-left-color: #f59e0b;
+    background: var(--bg-unread, #451a03);
+  }
+}
+
+/* Borders según severidad */
+.incident-item--critica {
+  border-left: 4px solid #dc2626;
+}
+
+.incident-item--alta {
+  border-left: 4px solid #ea580c;
+}
+
+.incident-item--media {
+  border-left: 4px solid #eab308;
+}
+
+.incident-item--baja {
+  border-left: 4px solid #10b981;
+}
+
+/* ============================================================
+   INCIDENT HEADER
+   ============================================================ */
+
+.incident-item__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.incident-item__id {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+}
+
+.incident-item__severity {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* Severidades */
+.severity--critica {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.severity--alta {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
+.severity--media {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.severity--baja {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+@media (prefers-color-scheme: dark) {
+  .severity--critica {
+    background: #7f1d1d;
+    color: #fecaca;
+  }
+
+  .severity--alta {
+    background: #7c2d12;
+    color: #fed7aa;
+  }
+
+  .severity--media {
+    background: #78350f;
+    color: #fde68a;
+  }
+
+  .severity--baja {
+    background: #064e3b;
+    color: #6ee7b7;
+  }
+}
+
+/* ============================================================
+   INCIDENT BODY
+   ============================================================ */
+
+.incident-item__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.incident-item__body p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary, #4b5563);
+}
+
+@media (prefers-color-scheme: dark) {
+  .incident-item__body p {
+    color: var(--text-secondary, #9ca3af);
+  }
+}
+
+.incident-item__local,
+.incident-item__category {
+  font-weight: 500;
+  color: var(--text-primary, #1f2937) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  .incident-item__local,
+  .incident-item__category {
+    color: var(--text-primary, #f3f4f6) !important;
+  }
+}
+
+.incident-item__description {
+  font-style: italic;
+  padding: 0.5rem;
+  background: var(--bg-desc, #f9fafb);
+  border-radius: 4px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .incident-item__description {
+    background: var(--bg-desc, #1f2937);
+  }
+}
+
+.incident-item__date {
+  font-size: 0.8125rem;
+  color: var(--text-muted, #9ca3af) !important;
+}
+
+/* ============================================================
+   SCROLLBAR
+   ============================================================ */
+
+.incident-notifications__list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.incident-notifications__list::-webkit-scrollbar-track {
+  background: var(--scrollbar-track, #f1f1f1);
+}
+
+.incident-notifications__list::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb, #d97706);
+  border-radius: 4px;
+}
+
+.incident-notifications__list::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover, #b45309);
+}
+
+@media (prefers-color-scheme: dark) {
+  .incident-notifications__list::-webkit-scrollbar-track {
+    background: var(--scrollbar-track, #1a1a1a);
+  }
+
+  .incident-notifications__list::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb, #f59e0b);
+  }
+
+  .incident-notifications__list::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover, #d97706);
+  }
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+
+@media (max-width: 768px) {
+  .incident-notifications__header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .incident-notifications__filters {
+    flex-direction: column;
+  }
+
+  .filter-btn {
+    width: 100%;
+  }
+
+  .incident-item__header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+}
