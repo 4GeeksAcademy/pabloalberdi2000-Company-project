@@ -22,10 +22,17 @@ from enum import Enum
 
 class RFPTicketStatus(str, Enum):
     """Estados del ciclo de vida del ticket de RFP"""
+    # Parte 1: Recepción y Análisis
     ANALIZANDO = "analizando"              # En procesamiento asíncrono
     DESCARTADO = "descartado"              # No es RFP válida
-    ANALISIS_COMPLETO = "analisis_completo"  # Pipeline completo
+    ANALISIS_COMPLETO = "analisis_completo"  # Pipeline Parte 1 completo
     ERROR = "error"                        # Falló el procesamiento
+
+    # Parte 2: Generación y Evaluación
+    GENERANDO_BORRADOR = "generando_borrador"        # Generadores en acción
+    EN_EVALUACION = "en_evaluacion"                  # Evaluadores analizando
+    NEEDS_HUMAN_REVIEW = "needs_human_review"        # Requiere revisión manual
+    LISTO_PARA_CONSOLIDACION = "listo_para_consolidacion"  # Handoff a Parte 3
 
 
 class DepartmentType(str, Enum):
