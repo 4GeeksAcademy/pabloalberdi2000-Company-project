@@ -1,0 +1,12 @@
+# Testing Dependencies - Brasaland Digital
+# Python 3.9+
+
+# Testing framework
+pytest>=7.4.0,<8.0.0
+pytest-cov>=4.1.0  # Cobertura de código
+pytest-mock>=3.11.0  # Mocking
+
+# Pipeline dependencies (from main pipeline)
+pandas>=2.0.0,<3.0.0
+prefect>=2.14.0,<3.0.0
+sqlalchemy>=2.0.0,<3.0.0
