@@ -1,0 +1,95 @@
+{
+  "queries": [
+    {
+      "id": 1,
+      "question": "¿Cuántos locales tiene Brasaland y en qué países?",
+      "expected_documents": ["01-company-overview.md"],
+      "expected_keywords": ["14 locales", "Colombia", "Estados Unidos", "10", "4"],
+      "category": "Información General"
+    },
+    {
+      "id": 2,
+      "question": "¿Quién es el CEO de Brasaland?",
+      "expected_documents": ["01-company-overview.md"],
+      "expected_keywords": ["Mariana Restrepo", "CEO", "hija del fundador"],
+      "category": "Liderazgo"
+    },
+    {
+      "id": 3,
+      "question": "¿Cuáles son los horarios de apertura en Colombia?",
+      "expected_documents": ["04-procedures-policies.md"],
+      "expected_keywords": ["11:00 AM", "10:00 PM", "11:00 PM", "9:00 PM"],
+      "category": "Operaciones"
+    },
+    {
+      "id": 4,
+      "question": "¿Qué sistemas técnicos tiene implementados Brasaland Digital?",
+      "expected_documents": ["03-technical-systems.md"],
+      "expected_keywords": ["Sistema de Incidencias", "Nightly Export", "Celery", "Machine Learning"],
+      "category": "Tecnología"
+    },
+    {
+      "id": 5,
+      "question": "¿Cuál es la política de vacaciones en Estados Unidos?",
+      "expected_documents": ["04-procedures-policies.md"],
+      "expected_keywords": ["10 días", "1 año de antigüedad", "2 semanas de anticipación"],
+      "category": "RRHH"
+    },
+    {
+      "id": 6,
+      "question": "¿Cuántos empleados tiene Brasaland?",
+      "expected_documents": ["01-company-overview.md"],
+      "expected_keywords": ["115 personas", "empleados"],
+      "category": "Información General"
+    },
+    {
+      "id": 7,
+      "question": "¿Cuáles son las responsabilidades del área de Operaciones de Restaurante?",
+      "expected_documents": ["02-departments-operations.md"],
+      "expected_keywords": ["Felipe Guerrero", "supervisión", "14 locales", "inventario"],
+      "category": "Departamentos"
+    },
+    {
+      "id": 8,
+      "question": "¿Qué stack tecnológico utiliza el frontend de Brasaland?",
+      "expected_documents": ["03-technical-systems.md"],
+      "expected_keywords": ["Next.js 15", "TypeScript", "Tailwind CSS", "shadcn"],
+      "category": "Tecnología"
+    },
+    {
+      "id": 9,
+      "question": "¿Cuál es la política de higiene del personal en cocina?",
+      "expected_documents": ["04-procedures-policies.md"],
+      "expected_keywords": ["uñas cortas", "cabello recogido", "uniforme limpio", "lavado de manos"],
+      "category": "Calidad y Seguridad"
+    },
+    {
+      "id": 10,
+      "question": "¿Qué hace el CTO Nicolás Park?",
+      "expected_documents": ["02-departments-operations.md"],
+      "expected_keywords": ["Nicolás Park", "CTO", "Tecnología", "API central"],
+      "category": "Liderazgo"
+    }
+  ],
+  "metadata": {
+    "total_queries": 10,
+    "documents_covered": [
+      "01-company-overview.md",
+      "02-departments-operations.md",
+      "03-technical-systems.md",
+      "04-procedures-policies.md"
+    ],
+    "categories": [
+      "Información General",
+      "Liderazgo",
+      "Operaciones",
+      "Tecnología",
+      "RRHH",
+      "Departamentos",
+      "Calidad y Seguridad"
+    ],
+    "evaluation_metric": "Recall@3",
+    "target_recall": 0.80,
+    "description": "Test queries cubriendo todos los documentos fuente de la knowledge base"
+  }
+}
