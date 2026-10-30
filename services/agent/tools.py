@@ -1,6 +1,25 @@
 """
 Agent Tools - Herramientas Vivas para Consulta de Servicios
 
+⚠️  DEPRECATED: Este módulo está obsoleto desde 2024-10-26.
+⚠️  Usar en su lugar: services/agent/mcp_adapter.py
+
+Las tools ahora se exponen vía Model Context Protocol (MCP) con:
+- Servidor MCP independiente (mcps/server.py)
+- OAuth 2.1 authentication con scopes
+- Audit logging estructurado
+- Read-only enforcement para inventario
+
+MIGRACIÓN:
+  Antes: from services.agent.tools import execute_tool, AVAILABLE_TOOLS
+  Después: from services.agent.mcp_adapter import execute_tool, AVAILABLE_TOOLS
+
+Este archivo se mantiene temporalmente para referencia.
+
+---
+
+LEGACY IMPLEMENTATION (solo lectura directa):
+
 Tools de solo lectura (GET) que consultan servicios reales del monorepo:
 - Incidentes (GET /api/incidents, GET /api/incidents/{id})
 - Inventario (GET /inventory/products) [opcional]

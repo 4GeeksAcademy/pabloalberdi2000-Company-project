@@ -25,3 +25,6 @@ httpx==0.25.2                     # Async HTTP client with timeout support
 python-dotenv==1.0.0              # Environment variables
 pydantic==2.5.3                   # Already in main requirements but version pinned here
 tenacity==8.2.3                   # Retry logic for API calls
+
+# MCP Integration (Model Context Protocol)
+langchain-mcp-adapters==0.1.0     # MCP client adapters for LangChain tools

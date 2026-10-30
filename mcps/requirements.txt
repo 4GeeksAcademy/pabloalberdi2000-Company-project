@@ -1,0 +1,19 @@
+# MCP Server Dependencies
+
+# FastMCP - Servidor MCP con SSE/HTTP
+fastmcp==0.2.0
+
+# MCP Auth - OAuth 2.1 / OIDC validation
+mcpauth==0.1.0
+
+# HTTP Client para consumir APIs backend
+httpx==0.25.2
+
+# Pydantic para schemas tipados
+pydantic==2.5.3
+
+# Environment variables
+python-dotenv==1.0.0
+
+# Logging estructurado
+structlog==23.2.0

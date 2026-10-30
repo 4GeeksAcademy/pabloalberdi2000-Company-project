@@ -27,9 +27,9 @@ import openai
 import os
 from dotenv import load_dotenv
 
-# Importar funciones RAG y tools
+# Importar funciones RAG y tools (vía MCP)
 from data.pipelines.rag_query import retrieve, generate_answer
-from services.agent.tools import execute_tool, AVAILABLE_TOOLS
+from services.agent.mcp_adapter import execute_tool, AVAILABLE_TOOLS
 
 load_dotenv()
 
