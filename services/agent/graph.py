@@ -1,16 +1,23 @@
 """
-LangGraph Agent con Tools Vivas - Multi-Source Routing
+LangGraph Agent con Tools Vivas - Multi-Source Routing + Security Harness
 
 Grafo de estados que decide autónomamente:
 - Cuándo consultar RAG (conocimiento estático)
 - Cuándo invocar tools (datos operativos dinámicos)
 - Cuándo usar ambas fuentes
 
+SEGURIDAD INTEGRADA (Ticket #SEC-114):
+- Input guard: Bloquea jailbreaking, prompt injection, tareas fuera de alcance
+- Context sanitization: Neutraliza inyecciones indirectas en RAG/tools
+- Output guard: Previene fugas de system prompt y PII
+- Métricas de seguridad para observabilidad
+
 CRÍTICO:
 - NO indexar datos operativos en Qdrant (mutan en tiempo real)
 - Tools consumen servicios reales (no mocks)
 - Timeouts estrictos (3-5s)
 - Fallback honesto sin alucinación
+- Guardrails DETERMINISTAS (no dependen de LLM para estabilidad en CI)
 """
 
 import sys
@@ -43,6 +50,21 @@ from services.agent.memory import (
     discard_pending_proposals
 )
 
+# Importar harness de seguridad (Ticket #SEC-114)
+from services.agent.security import (
+    SecurityGuardrails,
+    InputGuardResult,
+    OutputGuardResult,
+    ThreatType,
+    sanitize_external_content,
+    get_security_metrics
+)
+from services.agent.security.secure_prompts import (
+    get_secure_system_prompt,
+    get_rejection_response,
+    get_casual_redirect
+)
+
 load_dotenv()
 
 # ============================================================
@@ -51,7 +73,7 @@ load_dotenv()
 
 class AgentState(TypedDict):
     """
-    Estado extendido para agente con tools y memoria.
+    Estado extendido para agente con tools, memoria y seguridad.
 
     Campos añadidos vs. RAGState:
     - tool_data: Resultado de invocación de tool
@@ -60,6 +82,8 @@ class AgentState(TypedDict):
     - routing_decision: Qué fuente usar (rag, tool, both)
     - pending_proposal: Propuesta de memoria pendiente de aprobación
     - conversation_id: ID de conversación (para memoria contextual)
+    - security_threat_detected: Amenaza detectada por guardrails (Ticket #SEC-114)
+    - security_rejected: Si la interacción fue bloqueada por seguridad
     """
     question: str                                    # Pregunta del usuario
     context: Optional[List[Dict[str, Any]]]         # Chunks de RAG
@@ -71,7 +95,86 @@ class AgentState(TypedDict):
     error: Optional[str]                            # Mensaje de error
     pending_proposal: Optional[Dict[str, Any]]      # Propuesta de memoria pendiente
     conversation_id: Optional[str]                  # ID de conversación
+    security_threat_detected: Optional[str]         # Tipo de amenaza (ThreatType)
+    security_rejected: Optional[bool]               # Si fue rechazado por seguridad
     metadata: Annotated[Dict[str, Any], add]        # Observabilidad
+
+
+# ============================================================
+# NODO: Security Input Guard (Ticket #SEC-114)
+# ============================================================
+
+def security_input_guard_node(state: AgentState) -> AgentState:
+    """
+    Nodo de seguridad: Valida entrada antes de procesamiento.
+
+    Bloquea:
+    - Jailbreaking (cambio de instrucciones)
+    - Prompt injection directo
+    - Tareas fuera de alcance (personal, trivia ajena)
+
+    Si detecta amenaza:
+    - Retorna respuesta de rechazo/reconducción sin procesar
+    - Marca security_rejected=True para saltar al final
+    """
+    print(f"\n[SECURITY_INPUT_GUARD] Validando entrada...")
+
+    guardrails = SecurityGuardrails()
+    guard_result: InputGuardResult = guardrails.validate_input(state["question"])
+
+    # Registrar en métricas
+    security_metrics = get_security_metrics()
+    security_metrics.record_input_check(
+        is_safe=guard_result.is_safe,
+        threat_type=guard_result.threat_type.value if guard_result.threat_type else None
+    )
+
+    if not guard_result.is_safe:
+        # AMENAZA DETECTADA - Bloquear procesamiento
+        print(f"[SECURITY_INPUT_GUARD] ⚠️  Amenaza detectada: {guard_result.threat_type.value}")
+        print(f"  Razón: {guard_result.reason}")
+        print(f"  Confianza: {guard_result.confidence:.2f}")
+
+        # Determinar respuesta según tipo de amenaza
+        if guard_result.threat_type == ThreatType.OUT_OF_SCOPE:
+            # Tarea fuera de alcance → Reconducción amigable
+            if len(state["question"].strip()) < 30:
+                # Trivialidad → Respuesta cortés + reconducción
+                rejection_answer = get_casual_redirect()
+            else:
+                # Tarea compleja fuera de alcance → Reconducción firme
+                rejection_answer = get_rejection_response(guard_result.threat_type.value)
+        else:
+            # Jailbreak / Prompt injection → Rechazo firme
+            rejection_answer = get_rejection_response(guard_result.threat_type.value)
+
+        return {
+            **state,
+            "answer": rejection_answer,
+            "security_threat_detected": guard_result.threat_type.value,
+            "security_rejected": True,
+            "metadata": {
+                **state.get("metadata", {}),
+                "security_guard": "input_guard",
+                "threat_detected": guard_result.threat_type.value,
+                "threat_reason": guard_result.reason,
+                "confidence": guard_result.confidence
+            }
+        }
+
+    # INPUT SEGURO - Continuar procesamiento
+    print(f"[SECURITY_INPUT_GUARD] ✅ Input seguro - Continuar")
+
+    return {
+        **state,
+        "question": guard_result.sanitized_input,  # Usar input sanitizado
+        "security_threat_detected": None,
+        "security_rejected": False,
+        "metadata": {
+            **state.get("metadata", {}),
+            "security_guard": "passed_input_guard"
+        }
+    }
 
 # ============================================================
 # NODO: Router (Decisión de Fuente)
