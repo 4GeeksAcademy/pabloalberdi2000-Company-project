@@ -31,6 +31,18 @@ from dotenv import load_dotenv
 from data.pipelines.rag_query import retrieve, generate_answer
 from services.agent.mcp_adapter import execute_tool, AVAILABLE_TOOLS
 
+# Importar sistema de memoria
+from services.agent.memory import (
+    AgentStructuredResponse,
+    MemoryProposalSchema,
+    ProposalStatus,
+    get_memory_manager,
+    create_proposal_audit_log,
+    process_approval,
+    is_approval_response,
+    discard_pending_proposals
+)
+
 load_dotenv()
 
 # ============================================================
@@ -39,13 +51,15 @@ load_dotenv()
 
 class AgentState(TypedDict):
     """
-    Estado extendido para agente con tools.
+    Estado extendido para agente con tools y memoria.
 
     Campos añadidos vs. RAGState:
     - tool_data: Resultado de invocación de tool
     - tool_name: Nombre de la tool invocada
     - needs_tool: Si se detectó necesidad de tool
     - routing_decision: Qué fuente usar (rag, tool, both)
+    - pending_proposal: Propuesta de memoria pendiente de aprobación
+    - conversation_id: ID de conversación (para memoria contextual)
     """
     question: str                                    # Pregunta del usuario
     context: Optional[List[Dict[str, Any]]]         # Chunks de RAG
@@ -55,6 +69,8 @@ class AgentState(TypedDict):
     routing_decision: Optional[str]                 # rag | tool | both
     answer: Optional[str]                           # Respuesta final
     error: Optional[str]                            # Mensaje de error
+    pending_proposal: Optional[Dict[str, Any]]      # Propuesta de memoria pendiente
+    conversation_id: Optional[str]                  # ID de conversación
     metadata: Annotated[Dict[str, Any], add]        # Observabilidad
 
 # ============================================================
@@ -254,77 +270,99 @@ def rag_retrieve_node(state: AgentState) -> AgentState:
 
 def synthesis_node(state: AgentState) -> AgentState:
     """
-    Nodo de síntesis: Genera respuesta final usando contexto RAG y/o tool_data.
+    Nodo de síntesis: Genera respuesta final con propuesta de memoria (Structured Output).
 
     Comportamiento:
-    - Si solo RAG: usa generate_answer()
-    - Si solo tool: formatea tool_data
-    - Si both: combina ambas fuentes en respuesta
-    - Si tool failed: respuesta honesta de fallback
+    - Construye prompt según fuentes disponibles (RAG/tool/both)
+    - Usa Structured Output para generar {response_text, memory_proposal}
+    - Evalúa si hay algo memorable (corrección, solución, preferencia)
+    - Registra propuesta en audit log si is_memorable=True
+    - Si tool failed: respuesta honesta de fallback (sin propuesta)
     """
-    print(f"\n[SYNTHESIS_NODE] Generando respuesta final")
+    print(f"\n[SYNTHESIS_NODE] Generando respuesta final con evaluación de memoria")
 
     question = state["question"]
     context = state.get("context", [])
     tool_data = state.get("tool_data")
     routing = state.get("routing_decision")
+    conversation_id = state.get("conversation_id", "unknown")
+
+    # Recuperar memorias relevantes del metadata (si existen)
+    relevant_memories = state.get("metadata", {}).get("relevant_memories", [])
 
     client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-    # Construir prompt según fuentes disponibles
+    # System prompt con instrucciones de memoria
+    system_prompt = """Eres un asistente de Brasaland que responde basándose en datos proporcionados, sin inventar información.
+
+MEMORIA PERSISTENTE:
+Si la conversación contiene algo que debería recordarse para futuras interacciones:
+
+✅ RECORDAR (is_memorable=True):
+- Correcciones explícitas del usuario ("en realidad es X", "no, el procedimiento correcto es Y")
+- Soluciones a problemas que no están en la documentación oficial
+- Preferencias explícitas del usuario sobre cómo trabajar
+- Flujos de trabajo aprendidos que funcionan
+- Hechos verificables del negocio confirmados por el usuario
+
+❌ NUNCA RECORDAR (is_memorable=False):
+- Datos personales (DNI, nombres completos, direcciones, teléfonos)
+- Contraseñas, tokens, API keys, secrets, credentials
+- Información confidencial o marcada como sensible
+- Datos financieros (tarjetas, cuentas bancarias)
+- Información médica o privada
+
+Si hay algo memorable, propón recordarlo en memory_proposal con:
+- content: Lo específico a recordar (corto y concreto)
+- category: resolution | user_correction | workflow | preference | fact
+- reason: Por qué es útil recordarlo (1 línea)
+
+Si no hay nada memorable, memory_proposal debe ser null."""
+
+    # Construir prompt de usuario según fuentes disponibles
+    user_prompt = ""
+
     if routing == "tool" and tool_data:
         # Solo tool
         if tool_data.get("success"):
             data = tool_data.get("data", {})
-
-            prompt = f"""Pregunta del usuario: {question}
+            user_prompt = f"""Pregunta del usuario: {question}
 
 Datos operativos obtenidos de la tool '{state.get('tool_name')}':
 {data}
 
-Responde la pregunta del usuario basándote ÚNICAMENTE en estos datos operativos.
-Sé conciso y directo."""
+Responde basándote ÚNICAMENTE en estos datos operativos. Sé conciso y directo."""
 
         else:
-            # Tool falló
+            # Tool falló - respuesta honesta sin propuesta de memoria
             error = tool_data.get("error", "Error desconocido")
             answer = f"Lo siento, no pude obtener esa información en este momento. Error: {error}"
 
-            print(f"[SYNTHESIS_NODE] ⚠️  Tool falló, respuesta honesta")
+            print(f"[SYNTHESIS_NODE] ⚠️  Tool falló, respuesta honesta (sin memoria)")
 
             return {
                 **state,
                 "answer": answer,
-                "metadata": {"synthesis_type": "tool_fallback"}
+                "pending_proposal": None,
+                "metadata": {**state.get("metadata", {}), "synthesis_type": "tool_fallback"}
             }
 
     elif routing == "rag" and context:
-        # Solo RAG (reutilizar generate_answer original)
-        try:
-            answer = generate_answer(question, context)
+        # Solo RAG
+        context_text = "\n\n".join([c["text"] for c in context[:3]])
+        user_prompt = f"""Pregunta del usuario: {question}
 
-            print(f"[SYNTHESIS_NODE] ✅ Respuesta RAG generada")
+Contexto de la base de conocimiento (documentos internos):
+{context_text}
 
-            return {
-                **state,
-                "answer": answer,
-                "metadata": {"synthesis_type": "rag_only"}
-            }
-        except Exception as e:
-            answer = f"Lo siento, ocurrió un error al procesar tu pregunta: {str(e)}"
-            return {
-                **state,
-                "answer": answer,
-                "error": str(e),
-                "metadata": {"synthesis_error": str(e)}
-            }
+Responde basándote en este contexto."""
 
     elif routing == "both":
         # Combinar RAG + tool
         context_text = "\n\n".join([c["text"] for c in context[:3]]) if context else "No hay contexto de documentos."
         tool_text = str(tool_data.get("data", {})) if tool_data and tool_data.get("success") else "No hay datos operativos disponibles."
 
-        prompt = f"""Pregunta del usuario: {question}
+        user_prompt = f"""Pregunta del usuario: {question}
 
 Contexto de la base de conocimiento (documentos internos):
 {context_text}
@@ -332,8 +370,7 @@ Contexto de la base de conocimiento (documentos internos):
 Datos operativos en tiempo real:
 {tool_text}
 
-Responde la pregunta combinando información de ambas fuentes cuando sea apropiado.
-Si los datos operativos no están disponibles, responde solo con el conocimiento documental."""
+Responde combinando información de ambas fuentes cuando sea apropiado."""
 
     else:
         # Sin fuentes (fallback)
@@ -344,38 +381,84 @@ Si los datos operativos no están disponibles, responde solo con el conocimiento
         return {
             **state,
             "answer": answer,
-            "metadata": {"synthesis_type": "no_sources"}
+            "pending_proposal": None,
+            "metadata": {**state.get("metadata", {}), "synthesis_type": "no_sources"}
         }
 
-    # Llamar a LLM con prompt construido
+    # Agregar memorias relevantes al contexto (si existen)
+    if relevant_memories:
+        memories_text = "\n".join([f"- {m['content']}" for m in relevant_memories])
+        user_prompt += f"\n\nMemorias relevantes de interacciones previas:\n{memories_text}"
+
+    # Llamar a LLM con Structured Output
     try:
-        response = client.chat.completions.create(
+        response = client.beta.chat.completions.parse(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "Eres un asistente de Brasaland que responde basándose en datos proporcionados, sin inventar información."},
-                {"role": "user", "content": prompt}
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
             ],
+            response_format=AgentStructuredResponse,
             temperature=0.3,
             max_tokens=500
         )
 
-        answer = response.choices[0].message.content
+        structured_response = response.choices[0].message.parsed
 
-        print(f"[SYNTHESIS_NODE] ✅ Respuesta generada")
+        print(f"[SYNTHESIS_NODE] ✅ Respuesta estructurada generada")
+
+        # Procesar propuesta de memoria si existe
+        pending_proposal = None
+        if structured_response.memory_proposal and structured_response.memory_proposal.is_memorable:
+            proposal = structured_response.memory_proposal
+
+            # Validar políticas negativas
+            is_valid, reject_reason = proposal.validate_negative_policies()
+
+            if is_valid:
+                # Registrar propuesta como PENDING en audit log
+                memory_manager = get_memory_manager()
+                audit_log = create_proposal_audit_log(
+                    proposal=proposal,
+                    status=ProposalStatus.PENDING,
+                    conversation_id=conversation_id
+                )
+                memory_manager.log_proposal(audit_log)
+
+                pending_proposal = {
+                    "id": audit_log.id,
+                    "content": proposal.content,
+                    "category": proposal.category,
+                    "reason": proposal.reason
+                }
+
+                print(f"[SYNTHESIS_NODE] 💡 Propuesta de memoria creada: {audit_log.id}")
+                print(f"  Categoría: {proposal.category}")
+                print(f"  Contenido: {proposal.content[:50]}...")
+            else:
+                print(f"[SYNTHESIS_NODE] ⚠️  Propuesta rechazada por política negativa: {reject_reason}")
 
         return {
             **state,
-            "answer": answer,
-            "metadata": {"synthesis_type": routing}
+            "answer": structured_response.response_text,
+            "pending_proposal": pending_proposal,
+            "metadata": {
+                **state.get("metadata", {}),
+                "synthesis_type": routing,
+                "has_memory_proposal": pending_proposal is not None,
+                "used_memories_count": len(relevant_memories)
+            }
         }
 
     except Exception as e:
+        print(f"[SYNTHESIS_NODE] ❌ Error: {e}")
         answer = f"Lo siento, ocurrió un error al generar la respuesta: {str(e)}"
         return {
             **state,
             "answer": answer,
+            "pending_proposal": None,
             "error": str(e),
-            "metadata": {"synthesis_error": str(e)}
+            "metadata": {**state.get("metadata", {}), "synthesis_error": str(e)}
         }
 
 
@@ -456,19 +539,95 @@ def build_agent_graph() -> StateGraph:
 # FUNCIÓN PÚBLICA
 # ============================================================
 
-def query_with_agent(question: str) -> Dict[str, Any]:
+def query_with_agent(question: str, conversation_id: Optional[str] = None) -> Dict[str, Any]:
     """
-    Ejecuta consulta con agente multi-source.
+    Ejecuta consulta con agente multi-source + memoria.
 
     Args:
         question: Pregunta del usuario
+        conversation_id: ID de conversación (para memoria contextual). Si None, se genera uno nuevo.
 
     Returns:
-        Dict con answer, metadata y trace
+        Dict con answer, metadata, pending_proposal y trace
     """
+    import uuid
+
+    # Generar conversation_id si no se proporciona
+    if not conversation_id:
+        conversation_id = str(uuid.uuid4())
+
     print("=" * 70)
     print(f"🤖 Ejecutando Agent Graph para: '{question}'")
+    print(f"📝 Conversation ID: {conversation_id[:8]}...")
     print("=" * 70)
+
+    # Obtener gestor de memoria
+    memory_manager = get_memory_manager()
+
+    # Verificar si hay propuestas pendientes en esta conversación
+    pending_proposals = memory_manager.get_pending_proposals(conversation_id)
+
+    # Si hay propuesta pendiente Y usuario está respondiendo a ella
+    if pending_proposals and is_approval_response(question):
+        # Usuario está respondiendo a la propuesta
+        proposal = pending_proposals[0]  # Tomar la más reciente
+        proposal_id = proposal.get("id")
+
+        print(f"\n📋 Detectada respuesta a propuesta {proposal_id[:8]}...")
+        print("⚙️  Procesando decisión del usuario...\n")
+
+        # Procesar aprobación/rechazo
+        result = process_approval(
+            proposal_id=proposal_id,
+            user_response=question,
+            user_id="current_user",  # TODO: Obtener del contexto de autenticación
+            memory_manager=memory_manager,
+            conversation_id=conversation_id
+        )
+
+        # Retornar directamente sin ejecutar el grafo
+        print("=" * 70)
+        print(result["message"])
+        print("=" * 70 + "\n")
+
+        return {
+            "answer": result["message"],
+            "question": question,
+            "metadata": {
+                "conversation_id": conversation_id,
+                "is_approval_response": True,
+                "approval_status": result["status"],
+                "proposal_id": proposal_id
+            },
+            "error": None,
+            "routing_decision": None,
+            "tool_used": None,
+            "pending_proposal": None,
+            "conversation_id": conversation_id
+        }
+
+    # Si hay propuestas pendientes pero usuario NO está respondiendo → descartar
+    if pending_proposals and not is_approval_response(question):
+        discarded_count = discard_pending_proposals(
+            conversation_id=conversation_id,
+            memory_manager=memory_manager,
+            reason="user_changed_topic"
+        )
+
+        if discarded_count > 0:
+            print(f"\n⚠️  {discarded_count} propuesta(s) pendiente(s) descartada(s) (cambio de tema)\n")
+
+    # Recuperar memorias relevantes antes de ejecutar el grafo
+    relevant_memories = memory_manager.read_memories(
+        query=question,
+        limit=3,
+        min_score=0.75
+    )
+
+    if relevant_memories:
+        print(f"\n💾 Memorias relevantes recuperadas: {len(relevant_memories)}")
+        for mem in relevant_memories:
+            print(f"  - [{mem['category']}] {mem['content'][:60]}... (score: {mem['score']:.2f})")
 
     graph = build_agent_graph()
 
@@ -481,7 +640,12 @@ def query_with_agent(question: str) -> Dict[str, Any]:
         "routing_decision": None,
         "answer": None,
         "error": None,
-        "metadata": {}
+        "pending_proposal": None,
+        "conversation_id": conversation_id,
+        "metadata": {
+            "conversation_id": conversation_id,
+            "relevant_memories": relevant_memories
+        }
     }
 
     final_state = graph.invoke(initial_state)
@@ -492,10 +656,24 @@ def query_with_agent(question: str) -> Dict[str, Any]:
 
     print(f"\n📊 Metadata:")
     for key, value in final_state.get("metadata", {}).items():
-        print(f"  - {key}: {value}")
+        if key != "relevant_memories":  # No imprimir las memorias completas
+            print(f"  - {key}: {value}")
 
     print(f"\n💬 Respuesta:")
     print(f"{final_state['answer']}\n")
+
+    # Si hay propuesta de memoria, mostrarla al usuario
+    if final_state.get("pending_proposal"):
+        proposal = final_state["pending_proposal"]
+        print("=" * 70)
+        print("💡 PROPUESTA DE MEMORIA")
+        print("=" * 70)
+        print(f"📝 Contenido: {proposal['content']}")
+        print(f"🏷️  Categoría: {proposal['category']}")
+        print(f"💭 Razón: {proposal['reason']}")
+        print(f"🆔 Proposal ID: {proposal['id']}")
+        print("\n¿Quieres que guarde esta información? (Responde: sí/no/editar)")
+        print("=" * 70 + "\n")
 
     return {
         "answer": final_state["answer"],
@@ -503,7 +681,9 @@ def query_with_agent(question: str) -> Dict[str, Any]:
         "metadata": final_state.get("metadata", {}),
         "error": final_state.get("error"),
         "routing_decision": final_state.get("routing_decision"),
-        "tool_used": final_state.get("tool_name")
+        "tool_used": final_state.get("tool_name"),
+        "pending_proposal": final_state.get("pending_proposal"),
+        "conversation_id": conversation_id
     }
 
 
