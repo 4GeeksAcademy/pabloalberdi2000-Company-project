@@ -4,7 +4,7 @@ Telemetry Schemas - Event Envelope Standard
 Basado en la especificación aprobada en TELEMETRY_PLAN.md y event-schemas.json.
 """
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional, Any, Literal
+from typing import Optional, Any
 from datetime import datetime
 import uuid
 
@@ -132,20 +132,29 @@ class TelemetryBatchRequest(BaseModel):
 
 class TelemetryBatchResponse(BaseModel):
     """
-    Respuesta del endpoint de ingestion stub.
+    Respuesta del endpoint de ingestion con desglose de eventos.
 
-    En MVP retorna solo la cantidad de eventos recibidos.
-    En producción incluirá detalles de validación y procesamiento.
+    Arquitectura resiliente: Un evento inválido no tira abajo el lote.
+    El endpoint retorna SIEMPRE HTTP 200 con desglose detallado.
+
+    Invariante: received = stored + rejected
     """
-    received: int = Field(..., description="Cantidad de eventos procesados en el lote")
-    status: Literal["success"] = Field(default="success", description="Estado del procesamiento")
+    received: int = Field(..., description="Cantidad total de eventos recibidos en el lote")
+    stored: int = Field(..., description="Cantidad de eventos válidos persistidos en base de datos")
+    rejected: int = Field(..., description="Cantidad de eventos rechazados por validación")
 
     model_config = {
         "json_schema_extra": {
             "examples": [
                 {
+                    "received": 10,
+                    "stored": 8,
+                    "rejected": 2
+                },
+                {
                     "received": 5,
-                    "status": "success"
+                    "stored": 5,
+                    "rejected": 0
                 }
             ]
         }
