@@ -29,12 +29,12 @@ export default function KnowledgeBasePage() {
 
   // Preguntas sugeridas
   const suggestedQuestions = [
+    "¿Cuántos candidatos hay registrados actualmente?",
+    "Dame estadísticas actuales de la base de datos",
     "¿Cuántos locales tiene Brasaland y en qué países?",
     "¿Quién es el CEO de Brasaland?",
-    "¿Cuáles son los horarios de apertura en Colombia?",
     "¿Qué sistemas técnicos tiene implementados Brasaland Digital?",
-    "¿Cuál es la política de vacaciones en Estados Unidos?",
-    "¿Cuántos empleados tiene Brasaland?",
+    "¿Cuál es el stack tecnológico del backend?",
   ];
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -49,8 +49,10 @@ export default function KnowledgeBasePage() {
     setError(null);
     setAnswer(null);
 
+    const API_URL = process.env.NEXT_PUBLIC_EXTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
     try {
-      const response = await fetch("http://localhost:8000/knowledge/query", {
+      const response = await fetch(`${API_URL}/knowledge/query`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

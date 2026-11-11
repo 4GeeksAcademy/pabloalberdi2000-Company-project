@@ -3,21 +3,27 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .database import engine, Base
-from .routers import candidates, incidents, auth, users, profiles, inventory, telemetry, telemetry_report, tasks, knowledge, knowledge_graph  # Inventory + Telemetry + Async Tasks + RAG + LangGraph
-from .database_supabase import init_db as init_inventory_db, check_db_connection
+from .routers import candidates, incidents, auth, users, profiles, inventory, telemetry, telemetry_report, tasks, knowledge, knowledge_graph, chat_ws  # Inventory + Telemetry + Async Tasks + RAG + LangGraph + WebSocket Chat
 from .middleware import TimingMiddleware  # Performance monitoring
 from .cache import cache  # Cache manager
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
 
-# Initialize Supabase Inventory Database (Dual Database Architecture)
-print("🔄 Initializing Supabase Inventory Database...")
-if check_db_connection():
-    init_inventory_db()
-    print("✅ Supabase Inventory Database initialized")
-else:
-    print("⚠️  Warning: Supabase connection failed. Inventory endpoints will not work.")
+# Initialize Inventory Database (Supabase or SQLite fallback)
+print("🔄 Initializing Inventory Database...")
+try:
+    from .database_supabase import init_db as init_inventory_db, check_db_connection, engine as supabase_engine
+    if supabase_engine and check_db_connection():
+        init_inventory_db()
+        print("✅ Inventory Database: Supabase")
+    else:
+        raise ImportError("Supabase not configured")
+except (ImportError, Exception) as e:
+    print(f"⚠️  Supabase not available, using SQLite for inventory")
+    from .database_inventory_sqlite import init_inventory_db as init_sqlite_inventory
+    init_sqlite_inventory()
+    print("✅ Inventory Database: SQLite")
 
 # Create FastAPI app
 app = FastAPI(
@@ -88,6 +94,9 @@ app.include_router(knowledge.router)
 
 # RAG with LangGraph State Machine
 app.include_router(knowledge_graph.router)
+
+# WebSocket Chat with Token Streaming
+app.include_router(chat_ws.router)
 
 
 @app.get("/")

@@ -20,17 +20,17 @@ load_dotenv()
 
 # ============ SUPABASE / POSTGRESQL CONNECTION ============
 
-DATABASE_URL = os.getenv(
-    "SUPABASE_DATABASE_URL",
-    "postgresql://postgres:password@localhost:5432/brasaland_inventory"
-)
+DATABASE_URL = os.getenv("SUPABASE_DATABASE_URL", "")
 
 # Engine para Supabase/PostgreSQL (datos de negocio)
-engine = create_engine(
-    DATABASE_URL,
-    echo=False,  # Set True para debug SQL queries
-    pool_pre_ping=True,  # Verificar conexión antes de usar
-)
+# Solo se crea si la URL está configurada
+engine = None
+if DATABASE_URL:
+    engine = create_engine(
+        DATABASE_URL,
+        echo=False,  # Set True para debug SQL queries
+        pool_pre_ping=True,  # Verificar conexión antes de usar
+    )
 
 
 def init_db() -> None:
@@ -40,6 +40,9 @@ def init_db() -> None:
 
     IMPORTANTE: No toca TinyDB (users, auth).
     """
+    if engine is None:
+        print("⚠️  Supabase not configured, skipping inventory DB init")
+        return
     SQLModel.metadata.create_all(engine)
 
 
@@ -57,6 +60,9 @@ def get_inventory_db() -> Generator[Session, None, None]:
     - Rollback en caso de excepción
     - Cierre de sesión al finalizar
     """
+    if engine is None:
+        raise RuntimeError("Supabase DB not configured. Set SUPABASE_DATABASE_URL env var.")
+
     session = Session(engine)
     try:
         yield session
@@ -77,6 +83,10 @@ def check_db_connection() -> bool:
     Returns:
         bool: True si conexión exitosa, False si falla
     """
+    if engine is None:
+        print("⚠️  Supabase not configured")
+        return False
+
     try:
         with Session(engine) as session:
             session.exec(text("SELECT 1"))

@@ -3,23 +3,24 @@
 # Brasaland Digital Platform
 # ============================================
 
-# Stage 1: Base con Node.js Alpine
-FROM node:20-alpine as base
+# Stage 1: Base con Node.js
+FROM node:20-slim AS base
 
 # Metadata
 LABEL maintainer="Brasaland Digital Team"
 LABEL description="Next.js Frontend - Backoffice"
 
-# Instalar dependencias del sistema necesarias
-RUN apk add --no-cache \
-    libc6-compat \
-    curl
+# Instalar dependencias del sistema
+RUN apt-get update && apt-get install -y \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # Crear directorio de trabajo
 WORKDIR /app
 
 # Stage 2: Dependencias
-FROM base as dependencies
+FROM base AS dependencies
 
 # Copiar package.json de backoffice
 COPY backoffice/package.json backoffice/package-lock.json* ./backoffice/
@@ -28,7 +29,7 @@ COPY backoffice/package.json backoffice/package-lock.json* ./backoffice/
 RUN cd backoffice && npm ci --only=production=false
 
 # Stage 3: Desarrollo
-FROM base as development
+FROM base AS development
 
 # Copiar node_modules desde stage de dependencias
 COPY --from=dependencies /app/backoffice/node_modules ./backoffice/node_modules

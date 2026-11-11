@@ -14,7 +14,9 @@ import type {
 } from '@/types';
 import { getToken, removeToken } from './auth';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// Use EXTERNAL_API_URL for browser requests (localhost)
+// NEXT_PUBLIC_API_URL is for server-side (Docker network)
+const API_BASE = process.env.NEXT_PUBLIC_EXTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 /**
  * Generic fetch wrapper with error handling

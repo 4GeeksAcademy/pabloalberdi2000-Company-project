@@ -4,7 +4,7 @@
 # ============================================
 
 # Stage 1: Base con uv y dependencias del sistema
-FROM python:3.11-slim as base
+FROM python:3.11-slim AS base
 
 # Metadata
 LABEL maintainer="Brasaland Digital Team"
@@ -25,28 +25,32 @@ RUN apt-get update && apt-get install -y \
 
 # Instalar uv (gestor de paquetes moderno de Python)
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.cargo/bin:$PATH"
+ENV PATH="/root/.local/bin:/root/.cargo/bin:$PATH"
 
 # Crear directorio de trabajo
 WORKDIR /app
 
 # Stage 2: Dependencias
-FROM base as dependencies
+FROM base AS dependencies
 
-# Copiar requirements.txt primero (mejor caching de Docker)
-COPY api/requirements.txt /app/requirements.txt
+# Copiar requirements.txt
+COPY services/api/requirements.txt /app/requirements.txt
 
-# Instalar dependencias con uv
-# Nota: La línea "-e ../../packages/shared/python" será ignorada aquí
-# y se manejará en el siguiente stage
+# Instalar dependencias normales (sin el paquete compartido)
 RUN grep -v "^-e" requirements.txt > requirements_filtered.txt && \
-    uv pip install --system -r requirements_filtered.txt
+    pip install --no-cache-dir -r requirements_filtered.txt
 
 # Stage 3: Aplicación
-FROM dependencies as application
+FROM dependencies AS application
+
+# Copiar paquete compartido
+COPY packages/shared/python /packages/shared/python
+
+# Instalar paquete compartido
+RUN pip install -e /packages/shared/python
 
 # Copiar código del backend
-COPY api/ /app/
+COPY services/api/ /app/
 
 # Crear directorios necesarios
 RUN mkdir -p /app/logs

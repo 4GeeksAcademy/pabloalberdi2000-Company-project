@@ -66,8 +66,8 @@ async def login(credentials: LoginRequest):
             detail="Inactive user"
         )
 
-    # Crear token JWT con user_id en el payload
-    access_token = create_access_token(data={"sub": user.doc_id})
+    # Crear token JWT con user_id en el payload (sub debe ser string)
+    access_token = create_access_token(data={"sub": str(user.doc_id)})
 
     return {
         "access_token": access_token,

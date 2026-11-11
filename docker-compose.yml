@@ -3,7 +3,7 @@
 # Monorepo Completo para Desarrollo Local
 # ============================================
 
-version: '3.9'
+# Docker Compose v2 syntax (version field is obsolete)
 
 services:
   # ============================================
@@ -11,8 +11,8 @@ services:
   # ============================================
   backend:
     build:
-      context: ./services
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/Dockerfile
       target: application
     container_name: brasaland-backend
     ports:
@@ -21,7 +21,7 @@ services:
       # Base config
       - API_HOST=0.0.0.0
       - API_PORT=8000
-      - CORS_ORIGINS=http://localhost:3001,http://frontend:3001
+      - CORS_ORIGINS=["http://localhost:3001","http://frontend:3001"]
 
       # JWT Auth
       - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production-min-32-chars}
@@ -137,8 +137,8 @@ services:
   # ============================================
   celery-worker:
     build:
-      context: ./services
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/Dockerfile
       target: application
     container_name: brasaland-celery-worker
     command: celery -A app.celery_app.celery_app worker --loglevel=info --concurrency=4
@@ -170,8 +170,8 @@ services:
   # ============================================
   flower:
     build:
-      context: ./services
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/Dockerfile
       target: application
     container_name: brasaland-flower
     command: celery -A app.celery_app.celery_app flower --port=5555

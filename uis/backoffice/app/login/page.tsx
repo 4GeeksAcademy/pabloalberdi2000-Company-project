@@ -17,6 +17,7 @@ export default function LoginPage() {
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
+      console.log('🚀 Redirecting to home...');
       router.push('/');
     }
   }, [isAuthenticated, router]);
@@ -28,10 +29,11 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-      router.push('/');
+      console.log('✅ Login successful! Redirecting...');
+      // useEffect will handle redirect when isAuthenticated changes
     } catch (err) {
+      console.error('❌ Login failed:', err);
       setError(err instanceof Error ? err.message : 'Error al iniciar sesión');
-    } finally {
       setLoading(false);
     }
   };

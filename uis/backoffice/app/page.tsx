@@ -12,7 +12,7 @@ import { STATUS_LABELS, STAGE_LABELS, COUNTRY_LABELS } from '@/types';
 export default function CandidatesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isAuthenticated, loading: authLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
 
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,7 +28,9 @@ export default function CandidatesPage() {
 
   // Route protection
   useEffect(() => {
+    console.log('🏠 Home page - authLoading:', authLoading, 'isAuthenticated:', isAuthenticated);
     if (!authLoading && !isAuthenticated) {
+      console.log('❌ Not authenticated, redirecting to login');
       router.push('/login');
     }
   }, [isAuthenticated, authLoading, router]);

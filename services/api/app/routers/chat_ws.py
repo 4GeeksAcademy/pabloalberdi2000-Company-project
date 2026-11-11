@@ -465,6 +465,60 @@ async def receive_messages(
 
 
 # ============================================================
+# CONVERSATIONAL HELPERS
+# ============================================================
+
+def _make_conversational(rag_response: str, user_input: str) -> str:
+    """
+    Transforma la respuesta del RAG en algo más conversacional.
+
+    Args:
+        rag_response: Respuesta técnica del RAG
+        user_input: Pregunta original del usuario (en minúsculas)
+
+    Returns:
+        Respuesta más amigable y conversacional
+    """
+    # Detectar el tipo de pregunta
+    is_question_about_count = any(word in user_input for word in ["cuántos", "cuantos", "cantidad", "número", "numero"])
+    is_question_about_what = any(word in user_input for word in ["qué", "que", "cuál", "cual", "cuales", "cuáles"])
+    is_question_about_who = any(word in user_input for word in ["quién", "quien", "quienes", "quiénes"])
+    is_question_about_how = any(word in user_input for word in ["cómo", "como"])
+
+    # Prefijos conversacionales según el tipo de pregunta
+    prefixes = [
+        "¡Claro! Te cuento:",
+        "Con gusto te ayudo con eso.",
+        "Perfecto, aquí está la información:",
+        "Déjame compartirte eso:",
+    ]
+
+    # Si es una pregunta sobre cantidad, agregar intro más específico
+    if is_question_about_count:
+        intro = "Déjame darte los números exactos:\n\n"
+    elif is_question_about_who:
+        intro = "Te cuento sobre el equipo:\n\n"
+    elif is_question_about_what:
+        intro = "¡Buena pregunta! Aquí está la información:\n\n"
+    elif is_question_about_how:
+        intro = "Te explico:\n\n"
+    else:
+        intro = "Aquí está lo que encontré:\n\n"
+
+    # Si la respuesta del RAG ya es conversacional (empieza con mayúscula y es larga), no modificar mucho
+    if len(rag_response) > 200 and not rag_response.startswith("**"):
+        response = intro + rag_response
+    else:
+        response = intro + rag_response
+
+    # Agregar cierre conversacional si la respuesta es muy técnica
+    if "**" in rag_response and len(rag_response) > 100:
+        response += "\n\n¿Necesitas que profundice en algo específico? 😊"
+
+    return response
+
+
+# ============================================================
 # AGENT PROCESSING - TOKEN STREAMING
 # ============================================================
 
@@ -573,20 +627,78 @@ async def stream_agent_response(
 
     MOCK para testing sin LangGraph:
     """
-    # Mock: Simular streaming de respuesta
-    mock_response = (
-        "Hola, soy el asistente de Brasaland. "
-        "¿En qué puedo ayudarte con la gestión de los 14 restaurantes? "
-        "Puedo ayudarte con incidencias, candidatos, operaciones y más."
-    )
+    # Procesar entrada del usuario de forma conversacional
+    user_input_lower = user_input.lower().strip()
+
+    # Detectar saludos
+    greetings = ["hola", "buenos días", "buenas tardes", "buenas noches", "hey", "hi", "hello", "qué tal", "como estas"]
+    is_greeting = any(greeting in user_input_lower for greeting in greetings)
+
+    # Detectar despedidas
+    farewells = ["adiós", "adios", "chao", "hasta luego", "nos vemos", "bye", "hasta pronto"]
+    is_farewell = any(farewell in user_input_lower for farewell in farewells)
+
+    # Integración con RAG: Usar el sistema de conocimiento existente
+    try:
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from rag_mock import query as rag_query
+
+        # Respuesta personalizada según el contexto
+        if is_greeting and len(user_input_lower.split()) <= 5:
+            # Saludo simple
+            mock_response = (
+                "¡Hola! 👋 Soy tu asistente virtual de Brasaland.\n\n"
+                "Estoy aquí para ayudarte con información sobre nuestros 14 restaurantes en Colombia y Florida. "
+                "Puedo contarte sobre:\n\n"
+                "• **Candidatos y reclutamiento** - Tenemos 30 candidatos activos\n"
+                "• **Inventario** - 11 ingredientes gestionados en tiempo real\n"
+                "• **Operaciones** - Información de nuestros locales\n"
+                "• **Sistemas técnicos** - ATS, incidencias, inventario\n"
+                "• **El equipo** - CEO, CTO, directores de área\n\n"
+                "¿En qué te puedo ayudar hoy? 😊"
+            )
+        elif is_farewell:
+            # Despedida
+            mock_response = (
+                "¡Hasta pronto! 👋\n\n"
+                "Fue un placer ayudarte. Si necesitas algo más sobre Brasaland, "
+                "aquí estaré. ¡Que tengas un excelente día! 😊"
+            )
+        else:
+            # Consultar RAG con la pregunta del usuario
+            logger.info(f"[RAG] Consultando: {user_input}")
+            rag_response = rag_query(user_input)
+
+            # Hacer la respuesta más conversacional
+            mock_response = _make_conversational(rag_response, user_input_lower)
+
+            logger.info(f"[RAG] Respuesta obtenida: {len(mock_response)} caracteres")
+
+    except Exception as e:
+        logger.error(f"[RAG] Error consultando RAG: {e}")
+        # Fallback a respuesta genérica
+        mock_response = (
+            "Hola, soy el asistente de Brasaland. "
+            "¿En qué puedo ayudarte con la gestión de los 14 restaurantes? "
+            "Puedo ayudarte con incidencias, candidatos, operaciones y más."
+        )
 
     accumulated_content = ""
 
     try:
-        # Simular streaming token por token
-        for word in mock_response.split():
+        # Simular streaming token por token con velocidad variable
+        words = mock_response.split()
+        for i, word in enumerate(words):
             # Check point de cancelación
-            await asyncio.sleep(0.05)  # Simular latencia LLM
+            # Velocidad más rápida para palabras cortas, más lenta para puntuación
+            if word.endswith(('.', '!', '?', ':')):
+                await asyncio.sleep(0.08)  # Pausa en puntuación
+            elif word.endswith(','):
+                await asyncio.sleep(0.05)  # Pausa en comas
+            else:
+                await asyncio.sleep(0.02)  # Rápido para palabras normales
 
             delta = word + " "
             accumulated_content += delta

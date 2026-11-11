@@ -1,6 +1,6 @@
 /**
  * useAuth Hook - Client-side Auth Guard
- * 
+ *
  * Verifica que el usuario tenga token JWT válido.
  * Si no está autenticado, redirige a /login automáticamente.
  */
@@ -9,26 +9,59 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getToken } from '@/lib/auth';
+import { getToken, setToken, removeToken } from '@/lib/auth';
+
+const API_URL = process.env.NEXT_PUBLIC_EXTERNAL_API_URL || 'http://localhost:8000';
 
 export function useAuth() {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    // Initialize state from localStorage immediately
+    if (typeof window !== 'undefined') {
+      return !!getToken();
+    }
+    return false;
+  });
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const router = useRouter();
 
   useEffect(() => {
-    const token = getToken();
-
-    if (!token) {
-      router.push('/login');
-      setIsAuthenticated(false);
+    const checkAuth = () => {
+      const token = getToken();
+      console.log('🔍 useAuth checking token:', token ? 'Token exists' : 'No token');
+      console.log('🔍 Token value:', token);
+      setIsAuthenticated(!!token);
       setIsLoading(false);
-      return;
+    };
+
+    checkAuth();
+  }, []); // Solo verificar token una vez al montar
+
+  const login = async (email: string, password: string) => {
+    const response = await fetch(`${API_URL}/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, password }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Error al iniciar sesión');
     }
 
+    const data = await response.json();
+    setToken(data.access_token);
     setIsAuthenticated(true);
-    setIsLoading(false);
-  }, [router]);
+  };
 
-  return { isAuthenticated, isLoading };
+  const logout = () => {
+    removeToken();
+    setIsAuthenticated(false);
+    router.push('/login');
+  };
+
+  const token = typeof window !== 'undefined' ? getToken() : null;
+
+  return { isAuthenticated, isLoading, login, logout, token };
 }

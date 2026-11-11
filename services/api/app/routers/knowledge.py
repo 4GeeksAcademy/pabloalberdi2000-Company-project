@@ -18,9 +18,17 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 try:
-    from data.pipelines.rag_query import query as rag_query
+    from data.pipelines.rag_query import query as rag_query_real
+    rag_query = rag_query_real
+    print("✅ Using RAG with Qdrant + OpenAI")
 except ImportError:
-    rag_query = None
+    # Fallback a mock integrado
+    try:
+        from ..rag_mock import query as rag_query_mock
+        rag_query = rag_query_mock
+        print("⚠️  Using RAG Mock (no Qdrant/OpenAI configured)")
+    except ImportError:
+        rag_query = None
 
 # ============================================================
 # ROUTER
@@ -86,7 +94,7 @@ async def health_check():
     if not rag_query:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Sistema RAG no disponible. Verificar dependencias."
+            detail="Sistema RAG no disponible. Verificar instalación de dependencias (rag_query.py o rag_query_mock.py)."
         )
 
     if not qdrant_configured or not openai_configured:

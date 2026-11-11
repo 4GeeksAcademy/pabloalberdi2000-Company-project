@@ -1,10 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { useAuth } from '@/hooks/useAuth';
+import { useContext } from 'react';
+import { AuthContext } from '@/contexts/AuthContext';
 
 export function NavBar() {
-  const { user, isAuthenticated, logout } = useAuth();
+  const auth = useContext(AuthContext);
+
+  if (!auth) {
+    return null;
+  }
+
+  const { isAuthenticated, logout } = auth;
 
   return (
     <header className="sticky top-0 z-30 border-b border-amber-200 bg-amber-50/95 backdrop-blur">
@@ -27,16 +34,16 @@ export function NavBar() {
                   Candidatos
                 </Link>
                 <Link
-                  href="/new"
+                  href="/incidents"
                   className="text-sm text-amber-800 hover:text-amber-950 transition"
                 >
-                  Nueva Candidatura
+                  📊 Análisis CSV
                 </Link>
                 <Link
                   href="/incidents-manager"
                   className="text-sm text-amber-800 hover:text-amber-950 transition"
                 >
-                  Gestor de Incidencias
+                  📋 Incidencias
                 </Link>
                 <Link
                   href="/inventory/ingredients"
@@ -44,12 +51,20 @@ export function NavBar() {
                 >
                   🍖 Inventario
                 </Link>
+                <Link
+                  href="/knowledge"
+                  className="text-sm text-amber-800 hover:text-amber-950 transition"
+                >
+                  🤖 RAG
+                </Link>
+                <Link
+                  href="/chat"
+                  className="text-sm text-amber-800 hover:text-amber-950 transition"
+                >
+                  💬 Chat
+                </Link>
 
                 <div className="mx-2 h-6 w-px bg-amber-300"></div>
-
-                <span className="text-sm text-amber-800">
-                  {user?.profile?.name || user?.email}
-                </span>
                 <Link
                   href="/account/profile"
                   className="text-sm text-amber-800 hover:text-amber-950 transition"

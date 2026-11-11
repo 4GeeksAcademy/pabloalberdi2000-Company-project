@@ -266,8 +266,8 @@ def get_incidents_summary() -> IncidentSummary:
         branch = incident["branch"]
         by_branch[branch] = by_branch.get(branch, 0) + 1
 
-        # Recolectar puntuaciones de satisfacción (solo resueltos)
-        if incident["status"] == "resolved" and "satisfaction" in incident:
+        # Recolectar puntuaciones de satisfacción (solo resueltos con valor no nulo)
+        if incident["status"] == "resolved" and incident.get("satisfaction") is not None:
             satisfaction_scores.append(incident["satisfaction"])
 
     # Calcular promedio de satisfacción

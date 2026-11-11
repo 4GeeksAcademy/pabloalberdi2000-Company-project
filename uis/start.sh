@@ -17,7 +17,7 @@ cleanup() {
     exit 0
 }
 
-trap cleanup SIGTERM SIGINT
+trap cleanup TERM INT
 
 # Iniciar Backoffice en puerto 3001
 echo "📱 Starting Backoffice on port 3001..."

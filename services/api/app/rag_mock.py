@@ -1,0 +1,610 @@
+"""
+Mock RAG - Sistema RAG simple sin dependencias externas
+
+Proporciona respuestas sobre Brasaland basadas en projectbrief.md
+y consulta datos en tiempo real de las bases de datos.
+"""
+import sqlite3
+import json
+from pathlib import Path
+from typing import Dict, Any, Optional
+
+# Base de conocimiento expandida en memoria (de projectbrief.md, techContext.md, progress.md)
+KNOWLEDGE_BASE = {
+    "locales": {
+        "keywords": ["locales", "restaurantes", "sedes", "ubicaciones", "dónde", "cuántos"],
+        "answer": """Brasaland opera **14 restaurantes propios** en dos países:
+
+**Colombia (10 locales):**
+- Medellín: Centro, Poblado, Envigado
+- Bogotá: Zona Rosa, Usaquén, Suba
+- Cali: Norte, Sur
+- Cartagena: Centro
+- Barranquilla: Norte
+
+**Florida, USA (4 locales):**
+- Miami Beach
+- Miami Downtown
+- Orlando
+- Tampa"""
+    },
+    "ceo": {
+        "keywords": ["ceo", "director", "mariana", "restrepo", "jefe", "líder"],
+        "answer": "El CEO de Brasaland es **Mariana Restrepo**, hija del fundador. Asumió el cargo en 2019 y lidera la transformación digital de la empresa."
+    },
+    "empleados": {
+        "keywords": ["empleados", "personal", "trabajadores", "cuántas personas", "equipo"],
+        "answer": "Brasaland tiene **115 empleados** distribuidos en los 14 locales entre Colombia y Florida."
+    },
+    "facturacion": {
+        "keywords": ["facturación", "ventas", "ingresos", "ganancias", "cuánto vende"],
+        "answer": "Brasaland tiene una facturación anual de **$6 millones USD** en sus 14 locales."
+    },
+    "fundacion": {
+        "keywords": ["fundación", "cuándo", "inicio", "creación", "fundada", "antigüedad"],
+        "answer": "Brasaland fue fundada en **2008** en Medellín, Colombia. Tiene más de 15 años de trayectoria."
+    },
+    "cto": {
+        "keywords": ["cto", "nicolás", "park", "tecnología", "técnico"],
+        "answer": "El CTO (Chief Technology Officer) es **Nicolás Park**, basado en Medellín, quien lidera el equipo de Brasaland Digital."
+    },
+    "sistemas": {
+        "keywords": ["sistemas", "software", "tecnología", "digital", "ats", "inventario"],
+        "answer": """Brasaland Digital ha implementado los siguientes sistemas:
+
+1. **ATS (Applicant Tracking System)** - 100% completado
+   - Gestión de candidaturas para RRHH
+   - 30 candidatos activos
+
+2. **Sistema de Análisis de Incidencias** - 100% completado
+   - Análisis de incidencias postventa
+   - 500 incidencias históricas
+
+3. **Sistema de Inventario**
+   - Gestión de ingredientes
+   - 11 ingredientes base
+   - Stock por almacén en 14 locales
+
+4. **RAG/Knowledge Base** (este sistema)
+   - Consultas inteligentes sobre Brasaland"""
+    },
+    "valores": {
+        "keywords": ["valores", "misión", "visión", "cultura", "principios"],
+        "answer": """Los valores de marca de Brasaland son:
+
+1. **Consistencia**: La comida sabe igual en Medellín o Miami
+2. **Experiencia cálida**: Servicio consistente y amigable
+3. **Velocidad**: Cocina rápida y eficiente"""
+    },
+    "tecnologias": {
+        "keywords": ["stack", "tecnologías", "framework", "lenguaje", "next", "fastapi", "react"],
+        "answer": """**Stack Tecnológico de Brasaland Digital:**
+
+**Frontend:**
+- Framework: Next.js 15.1.0 (App Router)
+- Lenguaje: TypeScript 5 (modo estricto)
+- Styling: Tailwind CSS 3.4
+- UI: React 19
+
+**Backend:**
+- Framework: FastAPI 0.110+
+- Lenguaje: Python 3.9+
+- ORM: SQLAlchemy 2.0
+- Validación: Pydantic 2.6+
+- Base de datos: SQLite (desarrollo), PostgreSQL (producción)
+
+**Arquitectura:**
+- Monorepo con servicios separados
+- APIs REST con documentación OpenAPI automática
+- Docker para desarrollo local"""
+    },
+    "operaciones": {
+        "keywords": ["operaciones", "felipe", "guerrero", "dashboard", "ventas", "pedidos"],
+        "answer": """**Área de Operaciones** (Director: Felipe Guerrero)
+
+**Situación actual:**
+- 14 locales operan de forma aislada
+- Sin visibilidad en tiempo real
+- Pedidos de ingredientes por WhatsApp sin datos de inventario
+
+**Necesidades:**
+- Dashboard de ventas en tiempo real (COP/USD)
+- Sistema inteligente de pedidos basado en históricos
+- Alertas cuando un local no registra ventas"""
+    },
+    "marketing": {
+        "keywords": ["marketing", "camila", "ospina", "app", "fidelización", "brasa points"],
+        "answer": """**Marketing y Experiencia Digital** (Responsable: Camila Ospina)
+
+**Situación:**
+- Web de 2019 sin pedidos online
+- App con 2.8 estrellas
+- Programa de fidelización con tarjetas físicas (60% no las usa)
+
+**Necesidades:**
+- App digital de fidelización y pedidos
+- CRM con historial y preferencias
+- Motor de personalización"""
+    },
+    "rrhh": {
+        "keywords": ["rrhh", "personas", "ashley", "turner", "empleados", "contratación"],
+        "answer": """**Personas y Cultura** (Responsable: Ashley Turner, Miami)
+
+**Desafíos:**
+- 115 empleados en 14 locales y 2 países
+- Dos legislaciones laborales diferentes
+- Alta rotación en personal de cocina
+- Onboarding completamente manual
+
+**Necesidades:**
+- Portal interno (vacaciones, ausencias)
+- Onboarding automatizado
+- Dashboard de KPIs (rotación, absentismo)"""
+    },
+    "compras": {
+        "keywords": ["compras", "proveedores", "lucía", "fernández", "materia prima"],
+        "answer": """**Compras y Proveedores** (Responsable: Lucía Fernández)
+
+**Situación:**
+- ~20 proveedores entre Colombia y Florida
+- Negociación de precios por email/Excel
+- Sin datos consolidados de compras
+
+**Necesidades:**
+- Plataforma de gestión de proveedores
+- Historial de precios y alertas
+- Visibilidad consolidada para negociación centralizada"""
+    },
+    "formacion": {
+        "keywords": ["formación", "training", "jake", "morrison", "capacitación", "estándares"],
+        "answer": """**Formación y Estándares de Calidad** (Responsable: Jake Morrison, Miami)
+
+**Situación:**
+- Recetas y procedimientos en Google Drive desorganizado
+- Difícil mantener actualizaciones en dos países
+
+**Necesidades:**
+- Plataforma de formación con catálogo searchable
+- Onboarding estructurado
+- Distribución simultánea de actualizaciones (ES/EN)"""
+    },
+    "inventario_detalle": {
+        "keywords": ["inventario", "ingredientes", "stock", "almacén", "materia prima"],
+        "answer": """**Sistema de Inventario Implementado:**
+
+- 11 ingredientes base registrados
+- Stock calculado automáticamente: SUM(entradas) - SUM(salidas)
+- Distribución por almacén en 14 locales
+- Alertas de stock bajo (reorder points)
+
+**Ingredientes principales:**
+- Carnes (res, cerdo, pollo, chorizo)
+- Acompañamientos (arroz, papas, plátano)
+- Salsas (chimichurri, ají)
+- Bebidas (cerveza, gaseosa)"""
+    },
+    "ats_detalle": {
+        "keywords": ["ats", "candidatos", "reclutamiento", "vacantes", "aplicaciones"],
+        "answer": """**ATS (Applicant Tracking System)** - 100% Completado
+
+**Funcionalidades:**
+- 30 candidatos activos en base de datos
+- Filtros por estado y etapa del proceso
+- Búsqueda por nombre/email
+- Gestión de notas por candidato
+- Soporte multicountry (CO/US)
+
+**Puestos disponibles:**
+- Cocinero
+- Mesero
+- Cajero
+- Supervisor
+- Gerente de Local
+
+**Estados:** activo, archivado, contratado, rechazado
+**Etapas:** aplicación, revisión, entrevista, oferta, finalizado"""
+    },
+    "incidencias_detalle": {
+        "keywords": ["incidencias", "postventa", "análisis", "quejas", "reclamos"],
+        "answer": """**Sistema de Análisis de Incidencias** - 100% Completado
+
+**Capacidades:**
+- Análisis de CSV con validación completa
+- 500 incidencias históricas en base de datos
+- Gestión CRUD completa
+
+**Categorías (6):**
+- Calidad de comida
+- Servicio al cliente
+- Operaciones
+- Infraestructura
+- Pedidos online
+- Facturación
+
+**Estados:** abierto, en_proceso, cerrado, descartado
+**Índice de satisfacción:** 1-5 (solo casos cerrados)"""
+    },
+    "problemas": {
+        "keywords": ["problema", "desafío", "dificultad", "issue", "reto"],
+        "answer": """**Principales Desafíos de Brasaland:**
+
+1. **Gestión Multicountry:** Operando en 2 países con herramientas de 1 restaurante
+2. **Falta de Visibilidad:** Sin datos en tiempo real de los 14 locales
+3. **Procesos Manuales:** Pedidos por WhatsApp, fidelización física
+4. **Sin CRM:** No hay datos de clientes
+5. **Alta Rotación:** Especialmente en personal de cocina
+6. **Competencia Digital:** Competidores más pequeños con mejores herramientas
+
+**Solución:** Brasaland Digital - equipo para construir herramientas y sistemas modernos"""
+    },
+    "endpoints": {
+        "keywords": ["api", "endpoint", "rest", "swagger", "openapi"],
+        "answer": """**APIs Disponibles:**
+
+**ATS (Candidatos):**
+- GET /records - Listar candidatos
+- GET /records/{id} - Detalle
+- POST /records - Crear
+- PUT /records/{id} - Actualizar
+- PATCH /records/{id}/status - Cambiar estado
+
+**Incidencias:**
+- POST /incidents/analyze - Analizar CSV
+- GET /incidents - Listar incidencias
+- POST /incidents - Crear incidencia
+
+**Inventario:**
+- GET /inventory/ingredients - Listar ingredientes
+- GET /inventory/stock-report - Reporte de stock
+
+**Knowledge Base:**
+- POST /knowledge/query - Consulta RAG (este sistema)
+
+Documentación: http://localhost:8000/docs"""
+    },
+}
+
+
+# ============================================================
+# DATABASE QUERY FUNCTIONS
+# ============================================================
+
+def get_db_path(db_name: str) -> Path:
+    """Get database file path"""
+    base_path = Path(__file__).parent.parent
+    return base_path / db_name
+
+def query_candidates_data() -> Dict[str, Any]:
+    """Query ATS database for candidates statistics"""
+    try:
+        db_path = get_db_path("brasaland_ats.db")
+        if not db_path.exists():
+            return {"error": "Database not found"}
+
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+
+        # Total candidates
+        cursor.execute("SELECT COUNT(*) FROM candidates")
+        total = cursor.fetchone()[0]
+
+        # By status
+        cursor.execute("SELECT status, COUNT(*) FROM candidates GROUP BY status")
+        by_status = dict(cursor.fetchall())
+
+        # By position
+        cursor.execute("SELECT position, COUNT(*) FROM candidates GROUP BY position")
+        by_position = dict(cursor.fetchall())
+
+        # By country
+        cursor.execute("SELECT country, COUNT(*) FROM candidates GROUP BY country")
+        by_country = dict(cursor.fetchall())
+
+        # Recent candidates (last 5)
+        cursor.execute("""
+            SELECT full_name AS name, position, country, status
+            FROM candidates
+            ORDER BY rowid DESC
+            LIMIT 5
+        """)
+        recent = cursor.fetchall()
+
+        conn.close()
+
+        return {
+            "total": total,
+            "by_status": by_status,
+            "by_position": by_position,
+            "by_country": by_country,
+            "recent": [
+                {"name": r[0], "position": r[1], "country": r[2], "status": r[3]}
+                for r in recent
+            ]
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+def query_inventory_data() -> Dict[str, Any]:
+    """Query inventory database for stock statistics"""
+    try:
+        db_path = get_db_path("brasaland_inventory.db")
+        if not db_path.exists():
+            return {"error": "Database not found"}
+
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+
+        # Total ingredients
+        cursor.execute("SELECT COUNT(*) FROM ingredients")
+        total_ingredients = cursor.fetchone()[0]
+
+        # Ingredients list
+        cursor.execute("SELECT full_name AS name, sku, measurement_unit FROM ingredients")
+        ingredients = cursor.fetchall()
+
+        # Total orders (inbound + outbound)
+        cursor.execute("SELECT COUNT(*) FROM inbound_orders")
+        inbound_count = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM outbound_orders")
+        outbound_count = cursor.fetchone()[0]
+
+        # Stock by warehouse (top 5)
+        cursor.execute("""
+            SELECT warehouse, COUNT(DISTINCT ingredient_id)
+            FROM inbound_orders
+            GROUP BY warehouse
+            ORDER BY COUNT(*) DESC
+            LIMIT 5
+        """)
+        by_warehouse = dict(cursor.fetchall())
+
+        conn.close()
+
+        return {
+            "total_ingredients": total_ingredients,
+            "ingredients": [
+                {"name": i[0], "sku": i[1], "unit": i[2]}
+                for i in ingredients
+            ],
+            "total_inbound_orders": inbound_count,
+            "total_outbound_orders": outbound_count,
+            "by_warehouse": by_warehouse
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+def query_users_data() -> Dict[str, Any]:
+    """Query TinyDB for users statistics"""
+    try:
+        db_path = get_db_path("users_db.json")
+        if not db_path.exists():
+            return {"error": "Database not found"}
+
+        with open(db_path, 'r') as f:
+            data = json.load(f)
+
+        users = data.get("users", [])
+        profiles = data.get("profiles", [])
+
+        return {
+            "total_users": len(users),
+            "total_profiles": len(profiles),
+            "users": [
+                {"email": u.get("email"), "is_active": u.get("is_active")}
+                for u in users[:5]  # First 5
+            ]
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+def get_candidates_by_status(question: str) -> str:
+    """Query candidates filtered by status"""
+    try:
+        db_path = get_db_path("brasaland_ats.db")
+        if not db_path.exists():
+            return "No se pudo acceder a la base de datos de candidatos."
+
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+
+        # Detectar el estado solicitado
+        status_map = {
+            "activo": "activo",
+            "activos": "activo",
+            "archivado": "archivado",
+            "archivados": "archivado",
+            "contratado": "contratado",
+            "contratados": "contratado",
+            "rechazado": "rechazado",
+            "rechazados": "rechazado"
+        }
+
+        target_status = None
+        for key, value in status_map.items():
+            if key in question:
+                target_status = value
+                break
+
+        if target_status:
+            # Consultar candidatos con ese estado
+            cursor.execute(
+                "SELECT full_name, position, country FROM candidates WHERE status = ? ORDER BY id DESC LIMIT 10",
+                (target_status,)
+            )
+            candidates = cursor.fetchall()
+
+            # Contar total
+            cursor.execute("SELECT COUNT(*) FROM candidates WHERE status = ?", (target_status,))
+            total = cursor.fetchone()[0]
+
+            conn.close()
+
+            if total == 0:
+                return f"No hay candidatos en estado **{target_status}** en este momento."
+
+            # Emoji según el estado
+            status_emoji = {
+                "activo": "✅",
+                "archivado": "📦",
+                "contratado": "🎉",
+                "rechazado": "❌"
+            }.get(target_status, "📋")
+
+            response = f"## {status_emoji} Candidatos en Estado: {target_status.capitalize()}\n\n"
+            response += f"**Total:** {total} candidatos\n\n"
+            response += "---\n\n"
+
+            if candidates:
+                response += "**📋 Listado (últimos 10):**\n\n"
+                for i, (name, position, country) in enumerate(candidates, 1):
+                    flag = "🇨🇴" if country == "CO" else "🇺🇸"
+                    response += f"{i}. **{name}**  \n   *{position}* {flag}\n"
+
+            return response
+        else:
+            # Si no se detectó estado específico, mostrar resumen general
+            cursor.execute("SELECT status, COUNT(*) FROM candidates GROUP BY status")
+            by_status = dict(cursor.fetchall())
+            conn.close()
+
+            response = "## 👥 Resumen de Candidatos por Estado\n\n"
+            for status, count in by_status.items():
+                emoji = {"activo": "✅", "archivado": "📦", "contratado": "🎉", "rechazado": "❌"}.get(status, "📋")
+                response += f"- {emoji} **{status.capitalize()}**: {count} candidatos\n"
+
+            return response
+
+    except Exception as e:
+        return f"Error consultando candidatos: {str(e)}"
+
+def get_live_database_summary() -> str:
+    """Get real-time database statistics"""
+    candidates = query_candidates_data()
+    inventory = query_inventory_data()
+    users = query_users_data()
+
+    summary = "## 📊 Datos en Tiempo Real\n\n"
+
+    # Candidates
+    if "error" not in candidates:
+        summary += "### 👥 Sistema ATS (Candidatos)\n\n"
+        summary += f"**Total registrado:** {candidates['total']} candidatos\n\n"
+
+        summary += "**Por Estado:**\n"
+        for estado, count in candidates['by_status'].items():
+            emoji = {"activo": "✅", "archivado": "📦", "contratado": "🎉", "rechazado": "❌"}.get(estado, "•")
+            summary += f"- {emoji} {estado.capitalize()}: {count}\n"
+
+        summary += f"\n**Por País:**\n"
+        for pais, count in candidates['by_country'].items():
+            flag = "🇨🇴" if pais == "CO" else "🇺🇸"
+            summary += f"- {flag} {pais}: {count} candidatos\n"
+
+        summary += f"\n**Últimos Registrados:**\n"
+        for i, c in enumerate(candidates['recent'][:3], 1):
+            flag = "🇨🇴" if c['country'] == "CO" else "🇺🇸"
+            summary += f"{i}. **{c['name']}** - {c['position']} {flag}\n"
+        summary += "\n---\n\n"
+
+    # Inventory
+    if "error" not in inventory:
+        summary += "### 🍖 Sistema de Inventario\n\n"
+        summary += f"**Ingredientes activos:** {inventory['total_ingredients']}\n\n"
+        summary += f"**Movimientos:**\n"
+        summary += f"- 📥 Entradas: {inventory['total_inbound_orders']} órdenes\n"
+        summary += f"- 📤 Salidas: {inventory['total_outbound_orders']} órdenes\n\n"
+
+        summary += f"**Ingredientes Principales:**\n"
+        for ing in inventory['ingredients'][:5]:
+            summary += f"- **{ing['name']}** (`{ing['sku']}`) - Unidad: {ing['unit']}\n"
+        summary += "\n---\n\n"
+
+    # Users
+    if "error" not in users:
+        summary += "### 🔐 Usuarios del Sistema\n\n"
+        summary += f"- Total de usuarios: **{users['total_users']}**\n"
+        summary += f"- Perfiles configurados: **{users['total_profiles']}**\n"
+
+    return summary
+
+
+def query(question: str) -> str:
+    """
+    Consulta RAG mock con acceso a bases de datos en tiempo real.
+
+    Args:
+        question: Pregunta del usuario
+
+    Returns:
+        Respuesta generada
+    """
+    if not question or len(question.strip()) < 3:
+        raise ValueError("La pregunta debe tener al menos 3 caracteres")
+
+    question_lower = question.lower()
+
+    # Detectar consultas sobre estados/filtros específicos de candidatos
+    if any(word in question_lower for word in ["estado", "etapa", "activo", "archivado", "contratado", "rechazado"]):
+        if any(word in question_lower for word in ["candidato", "cuántos", "cuantos", "cantidad", "están", "estan", "hay"]):
+            return get_candidates_by_status(question_lower)
+
+    # Keywords para detectar consultas de datos en tiempo real
+    db_keywords = [
+        "cuántos candidatos", "candidatos actuales", "candidatos registrados",
+        "stock actual", "inventario actual", "ingredientes disponibles",
+        "usuarios registrados", "datos actuales", "base de datos",
+        "últimos candidatos", "estadísticas", "números reales",
+        "qué hay en", "mostrar datos", "dame información de"
+    ]
+
+    # Si detecta keywords de DB, retornar datos en tiempo real
+    if any(kw in question_lower for kw in db_keywords):
+        return get_live_database_summary()
+
+    # Buscar coincidencias en knowledge base estático
+    matches = []
+    for topic, data in KNOWLEDGE_BASE.items():
+        score = sum(1 for keyword in data["keywords"] if keyword in question_lower)
+        if score > 0:
+            matches.append((score, data["answer"]))
+
+    # Retornar mejor match
+    if matches:
+        matches.sort(reverse=True, key=lambda x: x[0])
+        return matches[0][1]
+
+    # Respuesta por defecto
+    return """Lo siento, no tengo información específica sobre esa pregunta en mi base de conocimiento.
+
+**📚 Temas que puedo responder:**
+
+**Sobre la Empresa:**
+- Locales y ubicaciones (14 restaurantes)
+- Equipo directivo (CEO Mariana Restrepo, CTO Nicolás Park)
+- Empleados, facturación, historia
+- Valores de marca y cultura
+
+**Departamentos:**
+- Operaciones (Felipe Guerrero)
+- Marketing (Camila Ospina)
+- RRHH (Ashley Turner)
+- Compras (Lucía Fernández)
+- Formación (Jake Morrison)
+
+**Sistemas Implementados:**
+- ATS (candidatos)
+- Sistema de Incidencias
+- Inventario
+- APIs disponibles
+
+**Tecnología:**
+- Stack tecnológico (Next.js, FastAPI, React)
+- Arquitectura del sistema
+
+**Datos en Tiempo Real:**
+- "¿Cuántos candidatos hay registrados?"
+- "¿Qué ingredientes hay en el inventario?"
+- "Dame estadísticas actuales"
+- "Muestra los últimos candidatos"
+
+Intenta reformular tu pregunta usando estas palabras clave."""

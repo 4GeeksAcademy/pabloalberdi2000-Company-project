@@ -18,7 +18,13 @@ from sqlmodel import Session, select, func
 from typing import List, Optional
 from datetime import datetime
 
-from ..database_supabase import get_inventory_db
+try:
+    from ..database_supabase import get_inventory_db, engine as supabase_engine
+    if supabase_engine is None:
+        raise ImportError("Supabase not configured")
+except (ImportError, Exception):
+    from ..database_inventory_sqlite import get_inventory_db
+    print("⚠️  Using SQLite for inventory (Supabase not configured)")
 from ..auth.dependencies import get_current_active_user
 from ..models.inventory import Ingredient, InboundOrder, OutboundOrder, WarehouseLocation
 from ..schemas.inventory import (
@@ -67,7 +73,7 @@ def calculate_stock(
     if warehouse:
         inbound_query = inbound_query.where(InboundOrder.warehouse == warehouse)
 
-    total_inbound = db.exec(inbound_query).first() or 0.0
+    total_inbound = db.execute(inbound_query).scalar() or 0.0
 
     # Sumar salidas
     outbound_query = select(func.sum(OutboundOrder.quantity)).where(
@@ -76,7 +82,7 @@ def calculate_stock(
     if warehouse:
         outbound_query = outbound_query.where(OutboundOrder.warehouse == warehouse)
 
-    total_outbound = db.exec(outbound_query).first() or 0.0
+    total_outbound = db.execute(outbound_query).scalar() or 0.0
 
     return total_inbound - total_outbound
 
@@ -112,9 +118,9 @@ def create_ingredient(
     Stock inicial: 0 (se incrementa con inbound orders)
     """
     # Verificar que SKU no existe
-    existing = db.exec(
+    existing = db.execute(
         select(Ingredient).where(Ingredient.sku == ingredient_data.sku)
-    ).first()
+    ).scalars().first()
 
     if existing:
         raise HTTPException(
@@ -156,9 +162,9 @@ def list_ingredients(
     - warehouse: Filtrar stock por almacén específico
     """
     # Obtener ingredientes
-    ingredients = db.exec(
+    ingredients = db.execute(
         select(Ingredient).offset(skip).limit(limit)
-    ).all()
+    ).scalars().all()
 
     # Construir responses con stock calculado
     result = []
@@ -397,7 +403,7 @@ def list_orders(
         if warehouse:
             inbound_query = inbound_query.where(InboundOrder.warehouse == warehouse)
 
-        inbound_orders = db.exec(inbound_query.offset(skip).limit(limit)).all()
+        inbound_orders = db.execute(inbound_query.offset(skip).limit(limit)).all()
 
         for order, ingredient in inbound_orders:
             result.append(OrderResponse(
@@ -422,7 +428,7 @@ def list_orders(
         if warehouse:
             outbound_query = outbound_query.where(OutboundOrder.warehouse == warehouse)
 
-        outbound_orders = db.exec(outbound_query.offset(skip).limit(limit)).all()
+        outbound_orders = db.execute(outbound_query.offset(skip).limit(limit)).all()
 
         for order, ingredient in outbound_orders:
             result.append(OrderResponse(
@@ -461,7 +467,7 @@ def get_stock_report(
     Query params:
     - low_stock_only: Solo mostrar ingredientes con stock < reorder_point
     """
-    ingredients = db.exec(select(Ingredient)).all()
+    ingredients = db.execute(select(Ingredient)).scalars().all()
 
     items = []
     low_stock_count = 0
