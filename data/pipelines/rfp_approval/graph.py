@@ -30,11 +30,11 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.postgres import PostgresSaver
-from langgraph.checkpoint.memory import MemorySaver  # Fallback para testing
-from psycopg import Connection
 import operator
 from dotenv import load_dotenv
+
+# Import checkpointer helper
+from .checkpointer import get_checkpointer, get_thread_config
 
 from services.models.rfp import (
     RFPTicket,
@@ -55,6 +55,13 @@ from services.models.rfp_approval import (
 )
 
 load_dotenv()
+
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
+MAX_APPROVAL_ITERATIONS = 3  # Máximo de intentos de aprobación por departamento
 
 
 # ============================================================
@@ -88,6 +95,9 @@ class ApprovalState(TypedDict):
     # Human-in-the-Loop flags
     waiting_for_human: bool
     waiting_for_arbitration: bool
+
+    # Iteration control (prevención de bucles infinitos)
+    approval_iterations: Dict[str, int]  # {dept: iteration_count}
 
     # Error handling
     error: Optional[str]
@@ -204,9 +214,10 @@ def department_approval_node(
 
     Flow:
     1. Pre-Approval Check: Verificar si borrador requiere revisión
-    2. INTERRUPT: Pausar para aprobación humana
-    3. Resume: Procesar decisión de aprobación
-    4. Mark Approved/Rejected
+    2. Verificar límite de iteraciones
+    3. INTERRUPT: Pausar para aprobación humana
+    4. Resume: Procesar decisión de aprobación
+    5. Mark Approved/Rejected
 
     CRÍTICO: Esta función se ejecuta ANTES de la interrupción.
     Después de la interrupción, el estado ya contiene la decisión humana.
@@ -221,6 +232,41 @@ def department_approval_node(
     if current_approval.get("status") == "approved":
         print(f"   ✅ {department} ya aprobado previamente")
         return state
+
+    # ============================================================
+    # VALIDACIÓN: Límite de iteraciones
+    # ============================================================
+    iterations = state.get("approval_iterations", {})
+    current_iteration = iterations.get(department, 0) + 1  # Incrementar contador
+
+    print(f"   🔄 Iteración {current_iteration}/{MAX_APPROVAL_ITERATIONS}")
+
+    if current_iteration > MAX_APPROVAL_ITERATIONS:
+        print(f"   ❌ LÍMITE ALCANZADO: {department} excedió {MAX_APPROVAL_ITERATIONS} intentos")
+
+        error_msg = (
+            f"Departamento '{department}' alcanzó el límite de {MAX_APPROVAL_ITERATIONS} iteraciones. "
+            f"Ticket requiere revisión manual o escalamiento a dirección."
+        )
+
+        return {
+            **state,
+            "error": error_msg,
+            "department_approvals": {
+                **state.get("department_approvals", {}),
+                department: {
+                    "status": "rejected_max_iterations",
+                    "iteration_count": current_iteration,
+                    "error": error_msg,
+                    "reviewer_name": "SYSTEM",
+                    "checkpoint_thread_id": f"rfp-{state['ticket_id']}:{department}"
+                }
+            },
+            "approval_iterations": {
+                **iterations,
+                department: current_iteration
+            }
+        }
 
     # Determinar responsable según company-BRIEFING.md
     DEPARTMENT_REVIEWERS = {
@@ -247,7 +293,8 @@ def department_approval_node(
         "department": department,
         "status": "pending",
         "reviewer_name": reviewer_name,
-        "checkpoint_thread_id": f"rfp-{state['ticket_id']}:{department}"
+        "checkpoint_thread_id": f"rfp-{state['ticket_id']}:{department}",
+        "iteration_count": current_iteration
     }
 
     # IMPORTANTE: Este estado se persiste en checkpoint ANTES de la interrupción
@@ -256,6 +303,10 @@ def department_approval_node(
         "department_approvals": {
             **state.get("department_approvals", {}),
             department: updated_approval
+        },
+        "approval_iterations": {
+            **iterations,
+            department: current_iteration
         },
         "waiting_for_human": True
     }
@@ -815,20 +866,16 @@ def execute_rfp_approval_pipeline(
     print(f"🚀 Iniciando Pipeline de Aprobación RFP - Ticket #{ticket_id}")
     print(f"{'='*60}")
 
-    # Usar MemorySaver si no se proporciona checkpointer
+    # Usar checkpointer por defecto (PostgreSQL/Supabase o MemorySaver fallback)
     if checkpointer is None:
-        checkpointer = MemorySaver()
-        print(f"⚠️  Usando MemorySaver (no persistente)")
+        checkpointer = get_checkpointer()
+        print(f"📦 Checkpointer type: {type(checkpointer).__name__}")
 
     # Construir grafo
     graph = build_rfp_approval_graph(checkpointer=checkpointer)
 
     # Configuración del thread (namespaced)
-    thread_config = {
-        "configurable": {
-            "thread_id": f"rfp-{ticket_id}"
-        }
-    }
+    thread_config = get_thread_config(ticket_id)
 
     # Estado inicial
     initial_state: ApprovalState = {
@@ -843,6 +890,7 @@ def execute_rfp_approval_pipeline(
         "conflicts_resolved": False,
         "waiting_for_human": False,
         "waiting_for_arbitration": False,
+        "approval_iterations": {},  # Contador de iteraciones por departamento
         "error": None
     }
 
@@ -914,11 +962,7 @@ def resume_with_approval(
     graph = build_rfp_approval_graph(checkpointer=checkpointer)
 
     # Configuración del thread
-    thread_config = {
-        "configurable": {
-            "thread_id": f"rfp-{ticket_id}"
-        }
-    }
+    thread_config = get_thread_config(ticket_id)
 
     # Obtener estado actual del checkpoint
     current_state = graph.get_state(thread_config)
@@ -970,11 +1014,7 @@ def resume_with_arbitration(
 
     graph = build_rfp_approval_graph(checkpointer=checkpointer)
 
-    thread_config = {
-        "configurable": {
-            "thread_id": f"rfp-{ticket_id}"
-        }
-    }
+    thread_config = get_thread_config(ticket_id)
 
     # Inyectar decisión de arbitraje
     graph.update_state(

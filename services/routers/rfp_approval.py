@@ -58,30 +58,35 @@ def get_db():
     """
     Dependency para obtener sesión de BD.
 
-    TODO: Implementar con SQLModel/Supabase engine real.
+    Usa motor de Supabase si está configurado, sino SQLite local.
     """
-    raise NotImplementedError("DB session dependency pendiente de configurar")
+    try:
+        # Importar desde ubicación correcta (services/api/app/)
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent.parent / "api"))
+
+        from app.database_supabase import get_inventory_db
+        db = next(get_inventory_db())
+        yield db
+        db.close()
+    except (ImportError, Exception) as e:
+        # Fallback: TinyDB (solo para tablas de auth, no RFP)
+        # RFP tables requieren SQLModel/PostgreSQL
+        raise HTTPException(
+            status_code=503,
+            detail=f"Base de datos no configurada: {str(e)}. Configurar SUPABASE_DATABASE_URL"
+        )
 
 
 def get_checkpointer():
     """
-    Dependency para obtener checkpointer PostgreSQL.
+    Dependency para obtener checkpointer PostgreSQL/Supabase.
 
-    TODO: Implementar con PostgresSaver real.
+    Usa el factory centralizado que maneja fallback automático.
     """
-    from langgraph.checkpoint.memory import MemorySaver
-
-    # TODO: Reemplazar con PostgresSaver
-    # from langgraph.checkpoint.postgres import PostgresSaver
-    # from psycopg import Connection
-    #
-    # db_url = os.getenv("DATABASE_URL")
-    # conn = Connection.connect(db_url)
-    # checkpointer = PostgresSaver(conn)
-
-    # Por ahora, MemorySaver (no persistente)
-    checkpointer = MemorySaver()
-    return checkpointer
+    from data.pipelines.rfp_approval.checkpointer import get_checkpointer as get_cp
+    return get_cp()
 
 
 # ============================================================
