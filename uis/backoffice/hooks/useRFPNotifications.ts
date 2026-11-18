@@ -38,6 +38,7 @@ interface UseRFPNotificationsOptions {
   apiBaseUrl?: string;
   autoConnect?: boolean;
   maxReconnectDelay?: number;  // Max delay en ms (default: 32000)
+  maxTicketsInMemory?: number;  // Max tickets en Map (default: 100)
   onTicketCreated?: (ticket: RFPTicket) => void;
   onError?: (error: Error) => void;
 }
@@ -63,6 +64,7 @@ export function useRFPNotifications(
     apiBaseUrl = '/api',
     autoConnect = true,
     maxReconnectDelay = 32000,
+    maxTicketsInMemory = 100,  // Límite de memoria: 100 tickets
     onTicketCreated,
     onError,
   } = options;
@@ -77,6 +79,25 @@ export function useRFPNotifications(
   const abortControllerRef = useRef<AbortController | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
   const ticketsMapRef = useRef<Map<number, RFPTicket>>(new Map());
+
+  // ============================================================
+  // HELPER: Agregar ticket con eviction policy (LRU)
+  // ============================================================
+
+  const addTicketWithEviction = useCallback((ticket: RFPTicket) => {
+    // Verificar límite de memoria
+    if (ticketsMapRef.current.size >= maxTicketsInMemory) {
+      // Eviction policy: Remover ticket más antiguo (first key = oldest insertion)
+      const oldestKey = ticketsMapRef.current.keys().next().value;
+      if (oldestKey !== undefined) {
+        ticketsMapRef.current.delete(oldestKey);
+        console.log(`[SSE] Evicted ticket ${oldestKey} (memory limit ${maxTicketsInMemory} reached)`);
+      }
+    }
+
+    // Agregar nuevo ticket
+    ticketsMapRef.current.set(ticket.ticket_id, ticket);
+  }, [maxTicketsInMemory]);
 
   // ============================================================
   // FETCH INITIAL TICKETS (Sincronización al reconectar)
@@ -97,20 +118,20 @@ export function useRFPNotifications(
       const data = await response.json();
       const fetchedTickets: RFPTicket[] = data.tickets || [];
 
-      // Actualizar mapa de tickets (deduplicación)
+      // Actualizar mapa de tickets con eviction policy
       fetchedTickets.forEach(ticket => {
-        ticketsMapRef.current.set(ticket.ticket_id, ticket);
+        addTicketWithEviction(ticket);
       });
 
       // Actualizar estado
       setTickets(Array.from(ticketsMapRef.current.values()));
 
-      console.log(`[SSE] Sincronizados ${fetchedTickets.length} tickets`);
+      console.log(`[SSE] Sincronizados ${fetchedTickets.length} tickets (max ${maxTicketsInMemory} en memoria)`);
     } catch (error) {
       console.error('[SSE] Error fetching initial tickets:', error);
       // NO lanzar error: continuar con SSE aunque falle el refetch
     }
-  }, [apiBaseUrl, jwtToken]);
+  }, [apiBaseUrl, jwtToken, addTicketWithEviction, maxTicketsInMemory]);
 
   // ============================================================
   // CONNECT SSE
@@ -191,7 +212,8 @@ export function useRFPNotifications(
 
               // Deduplicación
               if (!ticketsMapRef.current.has(ticket.ticket_id)) {
-                ticketsMapRef.current.set(ticket.ticket_id, ticket);
+                // Agregar con eviction policy
+                addTicketWithEviction(ticket);
 
                 // Actualizar estado (insertar al tope)
                 setTickets(Array.from(ticketsMapRef.current.values()));
@@ -270,7 +292,7 @@ export function useRFPNotifications(
 
       return newAttempts;
     });
-  }, [connectSSE, fetchInitialTickets, maxReconnectDelay]);
+  }, [connectSSE, fetchInitialTickets, maxReconnectDelay, addTicketWithEviction]);
 
   // ============================================================
   // CONNECT / DISCONNECT

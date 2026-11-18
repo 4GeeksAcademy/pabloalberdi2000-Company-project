@@ -21,7 +21,7 @@ from .manager import (
     IncidentCreatedEvent,
     CandidateAppliedEvent,
     OperationalAlertEvent,
-    RFPTicketEvent  # DEPRECATED: Alias para compatibilidad
+    RFPTicketEvent
 )
 
 __all__ = [
@@ -30,5 +30,5 @@ __all__ = [
     "IncidentCreatedEvent",
     "CandidateAppliedEvent",
     "OperationalAlertEvent",
-    "RFPTicketEvent",  # DEPRECATED
+    "RFPTicketEvent",
 ]

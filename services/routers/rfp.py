@@ -221,16 +221,21 @@ async def upload_rfp(
         print(f"✅ Ticket creado: {ticket.id}")
 
         # 🔔 PUBLICAR EVENTO SSE: Notificar creación de ticket
+        # CRÍTICO: Este evento se publica cuando el ticket se CREA en BD,
+        # NO cuando finaliza el análisis (eso sería rfp_analysis_complete)
         event = RFPTicketEvent(
             event_type="rfp_ticket_created",
             ticket_id=ticket.id,
             status=ticket.status.value,
             filename=ticket.filename,
             client_name=None,  # Se actualiza cuando se extraiga metadata
+            project_title=None,  # Se actualiza cuando se extraiga metadata
+            submission_deadline=None,  # Se actualiza cuando se extraiga metadata
             created_at=ticket.created_at.isoformat()
         )
 
         # Publicar a todos los clientes SSE conectados
+        # Usar asyncio.create_task para NO bloquear el endpoint
         asyncio.create_task(connection_manager.publish(event))
         print(f"🔔 Evento SSE publicado: rfp_ticket_created (ticket {ticket.id})")
 

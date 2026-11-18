@@ -105,8 +105,32 @@ class OperationalAlertEvent:
         return data
 
 
-# Alias para compatibilidad con código existente (deprecado)
-RFPTicketEvent = IncidentCreatedEvent  # DEPRECATED: Use IncidentCreatedEvent
+@dataclass
+class RFPTicketEvent:
+    """
+    Evento de nuevo ticket RFP (Request for Proposal).
+
+    Dominio: Sistema de Recepción y Análisis de RFPs
+    Usuario: Equipo Comercial/Ventas
+    Trigger: Al registrar un nuevo RFP en base de datos
+
+    CRÍTICO: Este evento se emite cuando el ticket se CREA en BD,
+    NO cuando finaliza el pipeline asíncrono (eso sería rfp_analysis_complete).
+    """
+    event_type: str  # "rfp_ticket_created"
+    ticket_id: int
+    status: str  # "analizando", "analisis_completo", "descartado", etc.
+    filename: str
+    client_name: Optional[str]  # None si aún no se extrajo
+    project_title: Optional[str]  # None si aún no se extrajo
+    submission_deadline: Optional[str]  # ISO 8601 o None
+    created_at: str  # ISO 8601
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serializa a diccionario (sin event_type)"""
+        data = asdict(self)
+        data.pop("event_type")  # event_type va en el campo "event:" de SSE
+        return data
 
 
 # ============================================================
@@ -170,12 +194,12 @@ class ConnectionManager:
 
                 logger.info(f"[SSE] Desconexión: {connection_id} (Total: {len(self.connections)})")
 
-    async def publish(self, event: RFPTicketEvent):
+    async def publish(self, event):
         """
         Publica evento a TODAS las conexiones activas.
 
         Args:
-            event: Evento a difundir
+            event: Evento a difundir (cualquier dataclass con event_type y to_dict())
         """
         async with self._lock:
             if not self.connections:

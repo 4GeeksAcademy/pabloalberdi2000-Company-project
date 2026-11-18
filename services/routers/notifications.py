@@ -18,11 +18,18 @@ from typing import Optional
 from datetime import datetime
 import uuid
 
-from fastapi import APIRouter, HTTPException, Header, Request
+from fastapi import APIRouter, HTTPException, Header, Request, Depends
 from fastapi.responses import StreamingResponse
 from sse_starlette.sse import EventSourceResponse
 
 from services.notifications import connection_manager, RFPTicketEvent
+
+# CRÍTICO: Importar dependencia JWT del sistema de autenticación existente
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent / "api"))
+
+from app.auth.dependencies import get_current_active_user
 
 logger = logging.getLogger(__name__)
 
@@ -31,47 +38,10 @@ router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
 
 # ============================================================
-# DEPENDENCY: JWT AUTHENTICATION
+# DEPENDENCY: JWT AUTHENTICATION (Reutilización del sistema existente)
 # ============================================================
-
-async def verify_jwt_token(authorization: Optional[str] = Header(None)) -> str:
-    """
-    Verifica token JWT desde header Authorization.
-
-    Args:
-        authorization: Header "Authorization: Bearer <token>"
-
-    Returns:
-        user_id extraído del token
-
-    Raises:
-        HTTPException 401 si token inválido
-    """
-    if not authorization:
-        raise HTTPException(401, "Missing Authorization header")
-
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(401, "Invalid Authorization header format")
-
-    token = authorization.replace("Bearer ", "")
-
-    # TODO: Implementar validación JWT real
-    # from jose import jwt
-    # try:
-    #     payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-    #     user_id = payload.get("sub")
-    #     if not user_id:
-    #         raise HTTPException(401, "Invalid token payload")
-    #     return user_id
-    # except JWTError:
-    #     raise HTTPException(401, "Invalid token")
-
-    # Mock: Aceptar cualquier token no vacío
-    if len(token) < 10:
-        raise HTTPException(401, "Invalid token")
-
-    # Retornar mock user_id
-    return "user_mock_id"
+# La autenticación JWT se delega a get_current_active_user de app.auth.dependencies
+# Esta dependency verifica el token, valida expiración y retorna el usuario activo
 
 
 # ============================================================
@@ -81,41 +51,50 @@ async def verify_jwt_token(authorization: Optional[str] = Header(None)) -> str:
 @router.get("/sse")
 async def sse_stream(
     request: Request,
-    authorization: Optional[str] = Header(None)
+    current_user: dict = Depends(get_current_active_user)
 ):
     """
     Endpoint de Server-Sent Events para notificaciones en tiempo real.
 
     **Autenticación**: Requiere header `Authorization: Bearer <jwt_token>`
+    - Validación JWT delegada a `get_current_active_user` (sistema de auth existente)
+    - Solo usuarios activos pueden suscribirse
 
     **Protocolo SSE**:
     ```
     event: rfp_ticket_created
-    data: {"ticket_id": 123, "status": "analizando", ...}
+    data: {"ticket_id": 123, "status": "analizando", "filename": "...", ...}
 
-    event: keep-alive
-    data: {"timestamp": "2026-10-31T12:00:00Z"}
+    : keep-alive
+
     ```
 
-    **Reconexión**: Cliente debe implementar backoff exponencial
+    **Eventos emitidos**:
+    - `connected`: Confirmación de conexión establecida
+    - `rfp_ticket_created`: Nuevo ticket RFP registrado en BD
+    - `: keep-alive`: Heartbeat cada 30s (comentario SSE)
+
+    **Reconexión**: Cliente debe implementar backoff exponencial (hook ya implementado)
 
     **Headers**:
     - Content-Type: text/event-stream
     - Cache-Control: no-cache
     - Connection: keep-alive
     - X-Accel-Buffering: no (para proxies NGINX)
+
+    **Recuperación**:
+    - El cliente debe refetch `/rfp/tickets` al reconectar para sincronizar estado
+    - SSE solo envía eventos NUEVOS posteriores a la conexión
+    - No se implementa replay de eventos perdidos (patrón refetch + SSE)
     """
-    # Verificar autenticación JWT
-    try:
-        user_id = await verify_jwt_token(authorization)
-    except HTTPException as e:
-        logger.warning(f"[SSE] Autenticación fallida: {e.detail}")
-        raise
+    # Extraer user_id del usuario autenticado
+    user_id = current_user.get("doc_id") or current_user.get("id") or "unknown"
+    user_email = current_user.get("email", "unknown@example.com")
 
     # Generar connection_id único
     connection_id = f"{user_id}_{uuid.uuid4().hex[:8]}_{int(datetime.utcnow().timestamp())}"
 
-    logger.info(f"[SSE] Iniciando stream para {connection_id}")
+    logger.info(f"[SSE] Iniciando stream para usuario {user_email} (conn: {connection_id})")
 
     # Generador asíncrono de eventos
     async def event_generator():
