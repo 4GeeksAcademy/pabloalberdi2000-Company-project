@@ -21,6 +21,7 @@ profiles_table = db.table('profiles')
 reset_tokens_table = db.table('reset_tokens')  # Hito 6 - AUTH-03
 incidents_table = db.table('incidents')  # Fase 4 - Incident Management
 chat_messages_table = db.table('chat_messages')  # WebSocket Chat - Persistencia de mensajes
+suppliers_table = db.table('suppliers')  # Supplier Management - Gestión de proveedores
 
 # Query helpers
 User = Query()
@@ -28,6 +29,7 @@ Profile = Query()
 ResetToken = Query()  # Hito 6 - AUTH-03
 Incident = Query()  # Fase 4 - Incident Management
 ChatMessage = Query()  # WebSocket Chat
+Supplier = Query()  # Supplier Management
 
 
 def get_tinydb():
@@ -282,3 +284,120 @@ def get_chat_message_by_id(message_id: str) -> Optional[dict]:
     """
     result = chat_messages_table.search(ChatMessage.message_id == message_id)
     return result[0] if result else None
+
+
+# ============================================================
+# SUPPLIER MANAGEMENT HELPERS
+# ============================================================
+
+def get_supplier_by_id(supplier_id: int) -> Optional[dict]:
+    """
+    Obtener proveedor por ID de TinyDB.
+
+    Args:
+        supplier_id: ID del documento en TinyDB
+
+    Returns:
+        Documento del proveedor o None si no existe
+    """
+    return suppliers_table.get(doc_id=supplier_id)
+
+
+def get_supplier_by_name(name: str) -> Optional[dict]:
+    """
+    Buscar proveedor por nombre exacto (case-sensitive).
+
+    Args:
+        name: Nombre del proveedor
+
+    Returns:
+        Documento del proveedor o None si no existe
+    """
+    result = suppliers_table.search(Supplier.name == name)
+    return result[0] if result else None
+
+
+def create_supplier(supplier_data: dict) -> dict:
+    """
+    Insertar proveedor y retornar con doc_id.
+
+    Args:
+        supplier_data: Datos del proveedor (debe incluir created_at y updated_at)
+
+    Returns:
+        Documento insertado con ID asignado
+    """
+    doc_id = suppliers_table.insert(supplier_data)
+    return suppliers_table.get(doc_id=doc_id)
+
+
+def update_supplier(supplier_id: int, update_data: dict) -> Optional[dict]:
+    """
+    Actualizar proveedor por ID.
+
+    Args:
+        supplier_id: ID del documento en TinyDB
+        update_data: Datos a actualizar (debe incluir updated_at)
+
+    Returns:
+        Documento actualizado o None si no existe
+    """
+    suppliers_table.update(update_data, doc_ids=[supplier_id])
+    return suppliers_table.get(doc_id=supplier_id)
+
+
+def delete_supplier(supplier_id: int) -> bool:
+    """
+    Eliminar proveedor por ID.
+
+    Args:
+        supplier_id: ID del documento en TinyDB
+
+    Returns:
+        True si se eliminó, False si no existía
+    """
+    removed = suppliers_table.remove(doc_ids=[supplier_id])
+    return len(removed) > 0
+
+
+def list_suppliers(filters: dict = None, limit: int = 100, offset: int = 0) -> List[dict]:
+    """
+    Listar proveedores con filtros opcionales y paginación.
+
+    Args:
+        filters: Diccionario de filtros (ej: {"status": "activo", "country": "Colombia"})
+        limit: Límite de resultados
+        offset: Offset de paginación
+
+    Returns:
+        Lista de proveedores
+    """
+    if filters:
+        query = None
+        for key, value in filters.items():
+            condition = getattr(Supplier, key) == value
+            query = condition if query is None else query & condition
+        results = suppliers_table.search(query)
+    else:
+        results = suppliers_table.all()
+
+    return results[offset:offset + limit]
+
+
+def count_suppliers(filters: dict = None) -> int:
+    """
+    Contar proveedores con filtros opcionales.
+
+    Args:
+        filters: Diccionario de filtros
+
+    Returns:
+        Total de proveedores que coinciden con filtros
+    """
+    if filters:
+        query = None
+        for key, value in filters.items():
+            condition = getattr(Supplier, key) == value
+            query = condition if query is None else query & condition
+        return len(suppliers_table.search(query))
+    return len(suppliers_table.all())
