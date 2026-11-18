@@ -20,12 +20,14 @@ users_table = db.table('users')
 profiles_table = db.table('profiles')
 reset_tokens_table = db.table('reset_tokens')  # Hito 6 - AUTH-03
 incidents_table = db.table('incidents')  # Fase 4 - Incident Management
+chat_messages_table = db.table('chat_messages')  # WebSocket Chat - Persistencia de mensajes
 
 # Query helpers
 User = Query()
 Profile = Query()
 ResetToken = Query()  # Hito 6 - AUTH-03
 Incident = Query()  # Fase 4 - Incident Management
+ChatMessage = Query()  # WebSocket Chat
 
 
 def get_tinydb():
@@ -190,3 +192,93 @@ def count_incidents(filters: dict = None) -> int:
             query = condition if query is None else query & condition
         return len(incidents_table.search(query))
     return len(incidents_table.all())
+
+
+# ============ CHAT MESSAGES HELPERS (WebSocket Chat - Persistencia) ============
+
+def get_chat_history(session_id: str) -> List[dict]:
+    """
+    Cargar historial de chat de una sesión.
+
+    Args:
+        session_id: ID de sesión de chat (thread_id de LangGraph)
+
+    Returns:
+        Lista de mensajes ordenados por fecha de creación
+    """
+    messages = chat_messages_table.search(ChatMessage.session_id == session_id)
+    return sorted(messages, key=lambda m: m['created_at'])
+
+
+def save_chat_message(
+    session_id: str,
+    message_id: str,
+    role: str,
+    content: str,
+    status: str
+) -> dict:
+    """
+    Guardar mensaje de chat en BD.
+
+    Args:
+        session_id: ID de sesión de chat
+        message_id: ID único del mensaje
+        role: Rol del mensaje ('user', 'assistant', 'system')
+        content: Contenido del mensaje
+        status: Estado del mensaje ('completed', 'interrupted', 'streaming')
+
+    Returns:
+        Documento insertado
+    """
+    from datetime import datetime
+
+    message_data = {
+        "session_id": session_id,
+        "message_id": message_id,
+        "role": role,
+        "content": content,
+        "status": status,
+        "created_at": datetime.utcnow().isoformat()
+    }
+
+    doc_id = chat_messages_table.insert(message_data)
+    return chat_messages_table.get(doc_id=doc_id)
+
+
+def update_chat_message_status(message_id: str, status: str) -> Optional[dict]:
+    """
+    Actualizar status de un mensaje de chat.
+
+    Args:
+        message_id: ID del mensaje
+        status: Nuevo status ('completed', 'interrupted')
+
+    Returns:
+        Documento actualizado o None si no existe
+    """
+    from datetime import datetime
+
+    update_data = {
+        "status": status,
+        "updated_at": datetime.utcnow().isoformat()
+    }
+
+    chat_messages_table.update(update_data, ChatMessage.message_id == message_id)
+
+    # Retornar mensaje actualizado
+    result = chat_messages_table.search(ChatMessage.message_id == message_id)
+    return result[0] if result else None
+
+
+def get_chat_message_by_id(message_id: str) -> Optional[dict]:
+    """
+    Obtener mensaje de chat por message_id.
+
+    Args:
+        message_id: ID del mensaje
+
+    Returns:
+        Documento del mensaje o None si no existe
+    """
+    result = chat_messages_table.search(ChatMessage.message_id == message_id)
+    return result[0] if result else None

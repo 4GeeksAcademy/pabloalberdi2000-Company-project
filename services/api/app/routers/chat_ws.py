@@ -22,6 +22,7 @@ import asyncio
 import json
 import logging
 import uuid
+import os
 from typing import Dict, Optional, Set, Any
 from datetime import datetime
 
@@ -206,7 +207,7 @@ session_manager = ChatSessionManager()
 # JWT AUTHENTICATION
 # ============================================================
 
-async def verify_jwt_from_query(token: Optional[str]) -> str:
+async def verify_jwt_from_query(token: Optional[str]) -> dict:
     """
     Verifica token JWT desde query string.
 
@@ -214,7 +215,7 @@ async def verify_jwt_from_query(token: Optional[str]) -> str:
         token: JWT desde query param ?token=...
 
     Returns:
-        user_id extraído del token
+        dict con datos del usuario autenticado
 
     Raises:
         HTTPException 401 si token inválido
@@ -222,22 +223,45 @@ async def verify_jwt_from_query(token: Optional[str]) -> str:
     if not token:
         raise HTTPException(401, "Missing token in query string")
 
-    # TODO: Implementar validación JWT real
-    # from jose import jwt
-    # try:
-    #     payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-    #     user_id = payload.get("sub")
-    #     if not user_id:
-    #         raise HTTPException(401, "Invalid token payload")
-    #     return user_id
-    # except JWTError:
-    #     raise HTTPException(401, "Invalid token")
+    # Importar sistema de autenticación existente
+    try:
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent.parent))
 
-    # Mock: Aceptar token no vacío
-    if len(token) < 10:
-        raise HTTPException(401, "Invalid token")
+        from app.auth.jwt import verify_token
+        from app.tinydb_database import get_user_by_id
+    except ImportError as e:
+        logger.error(f"[WS] Error importando auth: {e}")
+        raise HTTPException(500, "Authentication system not available")
 
-    return "user_mock_id"
+    # Verificar token JWT
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(401, "Invalid or expired token")
+
+    # Extraer user_id del payload
+    user_id_str = payload.get("sub")
+    if not user_id_str:
+        raise HTTPException(401, "Invalid token payload: missing user_id")
+
+    try:
+        user_id = int(user_id_str)
+    except (ValueError, TypeError):
+        raise HTTPException(401, "Invalid token payload: malformed user_id")
+
+    # Buscar usuario en BD
+    user = get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(401, "User not found")
+
+    # Verificar que usuario esté activo
+    if not user.get("is_active", False):
+        raise HTTPException(401, "User account is inactive")
+
+    logger.info(f"[WS] Usuario autenticado: {user.get('email')} (ID: {user_id})")
+
+    return user
 
 
 # ============================================================
@@ -597,37 +621,118 @@ async def stream_agent_response(
     message_id: str
 ):
     """
-    Streamea respuesta del agente token por token.
+    Streamea respuesta del agente token por token usando LangGraph.
 
-    IMPLEMENTACIÓN CON LANGGRAPH:
-    ```python
-    graph = get_agent_graph()
+    ARQUITECTURA:
+    - Invoca build_agent_graph() del agente existente
+    - Usa astream_events() para streaming de tokens
+    - NO modifica el agente, solo cambia la capa de transporte
+    - Broadcast a todos los observadores de la sesión (Pub/Sub)
 
-    config = {"configurable": {"thread_id": session_id}}
+    ABORT GENUINO:
+    - Si asyncio.Task se cancela → raise asyncio.CancelledError
+    - El stream se detiene inmediatamente
+    - Mensaje parcial se guarda con status="interrupted"
+    """
+    # Flag para controlar modo de ejecución
+    USE_REAL_AGENT = os.getenv("USE_REAL_LANGGRAPH_AGENT", "false").lower() == "true"
 
-    async for event in graph.astream_events(
-        {"messages": [{"role": "user", "content": user_input}]},
-        config=config,
-        version="v2"
-    ):
-        if event["event"] == "on_chat_model_stream":
-            chunk = event["data"]["chunk"]
-            delta = chunk.content
+    if USE_REAL_AGENT:
+        # ============================================================
+        # MODO REAL: LangGraph Agent Streaming
+        # ============================================================
+        try:
+            from services.agent.graph import build_agent_graph
 
+            logger.info(f"[WS] Invocando agente LangGraph para sesión {session_id}")
+
+            graph = build_agent_graph()
+            config = {"configurable": {"thread_id": session_id}}
+
+            accumulated_content = ""
+
+            async for event in graph.astream_events(
+                {"messages": [{"role": "user", "content": user_input}]},
+                config=config,
+                version="v2"
+            ):
+                # Token streaming del modelo
+                if event["event"] == "on_chat_model_stream":
+                    chunk = event["data"]["chunk"]
+                    delta = chunk.content if hasattr(chunk, 'content') else str(chunk)
+
+                    if delta:
+                        accumulated_content += delta
+
+                        await session_manager.broadcast_to_session(
+                            session_id,
+                            {
+                                "type": "token_chunk",
+                                "delta": delta,
+                                "message_id": message_id,
+                                "timestamp": datetime.utcnow().isoformat()
+                            }
+                        )
+
+            # Generación completada
             await session_manager.broadcast_to_session(
                 session_id,
                 {
-                    "type": "token_chunk",
-                    "delta": delta,
+                    "type": "generation_completed",
                     "message_id": message_id,
+                    "total_tokens": len(accumulated_content.split()),
                     "timestamp": datetime.utcnow().isoformat()
                 }
             )
-    ```
 
-    MOCK para testing sin LangGraph:
+            # Guardar mensaje completo
+            await save_message(
+                session_id=session_id,
+                message_id=message_id,
+                role="assistant",
+                content=accumulated_content,
+                status="completed"
+            )
+
+            logger.info(f"[WS] Agente LangGraph completó respuesta ({len(accumulated_content)} caracteres)")
+
+        except asyncio.CancelledError:
+            # ABORT GENUINO: Stream cancelado por usuario
+            logger.info(f"[WS] Stream LangGraph abortado para mensaje {message_id}")
+            raise
+
+        except Exception as e:
+            logger.error(f"[WS] Error en streaming LangGraph: {e}")
+            await session_manager.broadcast_to_session(
+                session_id,
+                {
+                    "type": "error",
+                    "message": f"Error del agente: {str(e)}",
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            )
+            raise
+
+    else:
+        # ============================================================
+        # MODO MOCK: RAG + Streaming Simulado (para desarrollo/testing)
+        # ============================================================
+        logger.info(f"[WS] Modo MOCK activo (USE_REAL_LANGGRAPH_AGENT=false)")
+        await _stream_mock_response(session_id, user_input, message_id)
+
+
+async def _stream_mock_response(
+    session_id: str,
+    user_input: str,
+    message_id: str
+):
     """
-    # Procesar entrada del usuario de forma conversacional
+    MODO MOCK: Streaming simulado con RAG para desarrollo/testing.
+
+    Se activa cuando USE_REAL_LANGGRAPH_AGENT != true
+    Útil para desarrollo frontend sin dependencia del agente real.
+    """
+    # MOCK: Procesar entrada del usuario de forma conversacional
     user_input_lower = user_input.lower().strip()
 
     # Detectar saludos
@@ -768,11 +873,19 @@ async def load_chat_history(session_id: str) -> list:
             }
         ]
     """
-    # TODO: Implementar query a BD real
-    # return await db.query(ChatMessage).filter_by(session_id=session_id).all()
+    # Importar funciones de TinyDB
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
 
-    # Mock
-    return []
+    from app.tinydb_database import get_chat_history
+
+    # Cargar historial real desde TinyDB
+    messages = get_chat_history(session_id)
+
+    logger.info(f"[DB] Cargado historial de sesión {session_id}: {len(messages)} mensajes")
+
+    return messages
 
 
 async def save_message(
@@ -783,10 +896,25 @@ async def save_message(
     status: str
 ):
     """Guarda mensaje en BD."""
-    # TODO: Implementar insert a BD real
+    # Importar funciones de TinyDB
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+
+    from app.tinydb_database import save_chat_message
+
+    # Guardar mensaje real en TinyDB
+    saved_message = save_chat_message(
+        session_id=session_id,
+        message_id=message_id,
+        role=role,
+        content=content,
+        status=status
+    )
+
     logger.info(
-        f"[DB] Guardando mensaje {message_id} ({role}, {status}): "
-        f"{content[:50]}..."
+        f"[DB] Mensaje guardado: {message_id} ({role}, {status}) - "
+        f"{len(content)} caracteres"
     )
 
 
@@ -796,8 +924,20 @@ async def save_partial_message(
     status: str
 ):
     """Actualiza status de mensaje a interrupted."""
-    # TODO: Implementar update a BD real
-    logger.info(f"[DB] Marcando mensaje {message_id} como {status}")
+    # Importar funciones de TinyDB
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+
+    from app.tinydb_database import update_chat_message_status
+
+    # Actualizar status en TinyDB
+    updated_message = update_chat_message_status(message_id, status)
+
+    if updated_message:
+        logger.info(f"[DB] Mensaje {message_id} marcado como {status}")
+    else:
+        logger.warning(f"[DB] No se encontró mensaje {message_id} para actualizar")
 
 
 # ============================================================
